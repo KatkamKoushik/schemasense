@@ -10,11 +10,12 @@ Covers:
 7. Dialect syntax: recursive CTEs, quoted identifiers, and malformed queries.
 """
 
+import os
 import socket
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from schemasense.connection import (
     PrivilegedAccountError,
@@ -31,13 +32,36 @@ from schemasense.sql_guard import (
     execute_safe_query,
 )
 
+PG_HOST = os.getenv("SCHEMASENSE_TEST_PG_HOST", "127.0.0.1")
+PG_PORT = int(os.getenv("SCHEMASENSE_TEST_PG_PORT", "5433"))
+MYSQL_HOST = os.getenv("SCHEMASENSE_TEST_MYSQL_HOST", "127.0.0.1")
+MYSQL_PORT = int(os.getenv("SCHEMASENSE_TEST_MYSQL_PORT", "3307"))
 
-def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
-    """Checks if a network port is reachable."""
+
+def is_database_authenticated(
+    db_type: str,
+    host: str,
+    port: int,
+    db_name: str,
+    user: str,
+    password: str,
+    timeout: float = 0.5,
+) -> bool:
+    """Checks if a network port is reachable AND the target test database authenticates."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
-            return True
+            pass
     except (OSError, ConnectionRefusedError):
+        return False
+
+    try:
+        url = build_safe_url(db_type, host, port, db_name, user, password)
+        engine = create_engine(url, connect_args={"connect_timeout": int(timeout)})
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        dispose_engine(engine)
+        return True
+    except (SQLAlchemyError, OSError):
         return False
 
 
@@ -48,13 +72,22 @@ def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
 
 @pytest.fixture(scope="module")
 def postgres_admin_engine():
-    if not is_port_open("127.0.0.1", 5433):
-        pytest.skip("Live PostgreSQL test container (port 5433) is not available.")
+    if not is_database_authenticated(
+        "PostgreSQL",
+        PG_HOST,
+        PG_PORT,
+        "schemasense_test",
+        "test_admin",
+        "test_admin_pass",
+    ):
+        pytest.skip(
+            f"Live PostgreSQL test container ({PG_HOST}:{PG_PORT}) is not available or auth failed."
+        )
 
     url = build_safe_url(
         db_type="PostgreSQL",
-        host="127.0.0.1",
-        port=5433,
+        host=PG_HOST,
+        port=PG_PORT,
         db_name="schemasense_test",
         user="test_admin",
         password="test_admin_pass",
@@ -191,8 +224,8 @@ def postgres_admin_engine():
 def postgres_readonly_engine(postgres_admin_engine):
     engine = create_safe_engine(
         db_type="PostgreSQL",
-        host="127.0.0.1",
-        port=5433,
+        host=PG_HOST,
+        port=PG_PORT,
         db_name="schemasense_test",
         user="schemasense_readonly",
         password="readonly_pass",
@@ -208,13 +241,22 @@ def postgres_readonly_engine(postgres_admin_engine):
 
 @pytest.fixture(scope="module")
 def mysql_admin_engine():
-    if not is_port_open("127.0.0.1", 3307):
-        pytest.skip("Live MySQL test container (port 3307) is not available.")
+    if not is_database_authenticated(
+        "MySQL",
+        MYSQL_HOST,
+        MYSQL_PORT,
+        "schemasense_test",
+        "test_admin",
+        "test_admin_pass",
+    ):
+        pytest.skip(
+            f"Live MySQL test container ({MYSQL_HOST}:{MYSQL_PORT}) is not available or auth failed."
+        )
 
     url = build_safe_url(
         db_type="MySQL",
-        host="127.0.0.1",
-        port=3307,
+        host=MYSQL_HOST,
+        port=MYSQL_PORT,
         db_name="schemasense_test",
         user="test_admin",
         password="test_admin_pass",
@@ -303,8 +345,8 @@ def mysql_admin_engine():
     # Configure restricted read-only user on MySQL root
     root_url = build_safe_url(
         db_type="MySQL",
-        host="127.0.0.1",
-        port=3307,
+        host=MYSQL_HOST,
+        port=MYSQL_PORT,
         db_name="schemasense_test",
         user="root",
         password="root_test_pass",
@@ -346,8 +388,8 @@ def mysql_admin_engine():
 def mysql_readonly_engine(mysql_admin_engine):
     engine = create_safe_engine(
         db_type="MySQL",
-        host="127.0.0.1",
-        port=3307,
+        host=MYSQL_HOST,
+        port=MYSQL_PORT,
         db_name="schemasense_test",
         user="schemasense_readonly",
         password="readonly_pass",
@@ -964,15 +1006,24 @@ def test_live_postgres_privilege_inspection(
 
 def test_live_postgres_enforce_least_privilege_rejection():
     """Verifies that create_safe_engine can reject privileged accounts at connection time."""
-    if not is_port_open("127.0.0.1", 5433):
-        pytest.skip("PostgreSQL container unavailable.")
+    if not is_database_authenticated(
+        "PostgreSQL",
+        PG_HOST,
+        PG_PORT,
+        "schemasense_test",
+        "test_admin",
+        "test_admin_pass",
+    ):
+        pytest.skip(
+            f"Live PostgreSQL container ({PG_HOST}:{PG_PORT}) unavailable or auth failed."
+        )
 
     # Privileged connection with enforcement enabled must fail
     with pytest.raises(PrivilegedAccountError):
         create_safe_engine(
             db_type="PostgreSQL",
-            host="127.0.0.1",
-            port=5433,
+            host=PG_HOST,
+            port=PG_PORT,
             db_name="schemasense_test",
             user="test_admin",
             password="test_admin_pass",
@@ -982,8 +1033,8 @@ def test_live_postgres_enforce_least_privilege_rejection():
     # Least-privilege connection with enforcement enabled must succeed
     ro_engine = create_safe_engine(
         db_type="PostgreSQL",
-        host="127.0.0.1",
-        port=5433,
+        host=PG_HOST,
+        port=PG_PORT,
         db_name="schemasense_test",
         user="schemasense_readonly",
         password="readonly_pass",
@@ -1006,15 +1057,24 @@ def test_live_mysql_privilege_inspection(mysql_admin_engine, mysql_readonly_engi
 
 def test_live_mysql_enforce_least_privilege_rejection():
     """Verifies that create_safe_engine rejects privileged MySQL accounts when requested."""
-    if not is_port_open("127.0.0.1", 3307):
-        pytest.skip("MySQL container unavailable.")
+    if not is_database_authenticated(
+        "MySQL",
+        MYSQL_HOST,
+        MYSQL_PORT,
+        "schemasense_test",
+        "test_admin",
+        "test_admin_pass",
+    ):
+        pytest.skip(
+            f"Live MySQL container ({MYSQL_HOST}:{MYSQL_PORT}) unavailable or auth failed."
+        )
 
     # Admin connection must fail under least-privilege policy
     with pytest.raises(PrivilegedAccountError):
         create_safe_engine(
             db_type="MySQL",
-            host="127.0.0.1",
-            port=3307,
+            host=MYSQL_HOST,
+            port=MYSQL_PORT,
             db_name="schemasense_test",
             user="test_admin",
             password="test_admin_pass",
@@ -1024,8 +1084,8 @@ def test_live_mysql_enforce_least_privilege_rejection():
     # Read-only user passes
     ro_engine = create_safe_engine(
         db_type="MySQL",
-        host="127.0.0.1",
-        port=3307,
+        host=MYSQL_HOST,
+        port=MYSQL_PORT,
         db_name="schemasense_test",
         user="schemasense_readonly",
         password="readonly_pass",

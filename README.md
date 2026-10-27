@@ -6,7 +6,7 @@
 [![Python Versions](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![Security: SQLGuard AST](https://img.shields.io/badge/Security-SQLGuard%20AST-10B981?logo=shield)](docs/security/threat-model.md)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-355%20Tests%20%7C%20313%20Passed-brightgreen?logo=pytest)](tests/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-355%20Total%20%7C%20100%25%20Passing-brightgreen?logo=pytest)](tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-89%25-brightgreen)](tests/)
 [![Supply Chain: CycloneDX](https://img.shields.io/badge/SBOM-CycloneDX%20v1.5-blue?logo=owasp)](sbom.cyclonedx.json)
 [![Secrets: Scanned](https://img.shields.io/badge/Secret%20Scan-detect--secrets-success)](.secrets.baseline)
@@ -61,13 +61,19 @@ pip install -r requirements.txt -c constraints.txt
 
 ### 2. Run Test Suite & Coverage
 
-Verify the security boundaries, backend contracts, and analytical logic across the 355 tests:
+Verify the security boundaries, backend contracts, and analytical logic across the test suite (355 tests total with 100% pass rate):
+
+- **Fast Unit & Component Suite (313 tests)**: In-memory SQLite, mock schemas, AST SQLGuard adversarial syntax, backend isolation, and UI headless AppTests. Requires zero external services.
+- **Live Integration & Adversarial Suite (42 tests)**: Real PostgreSQL 16, MySQL 8.4, and GGUF inference tests. Automatically executes when test containers are active, or skips safely with clean health-checking.
 
 ```bash
-# Fast isolated tests (SQLite in-memory, mocks, and syntax):
-pytest -v --ignore=tests/test_live_integration.py --cov=schemasense
+# 1. Run full test suite (auto-detects live container availability):
+pytest -v
 
-# Full live suite (requires Docker test containers):
+# 2. Fast isolated unit suite with coverage:
+pytest -v --ignore=tests/test_live_integration.py --cov=schemasense --cov-report=term-missing
+
+# 3. Full live container suite (requires Docker test containers):
 docker compose -f docker-compose.test.yml up -d --wait
 pytest -v --cov=schemasense --cov-report=term-missing
 ```

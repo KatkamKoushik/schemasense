@@ -2,7 +2,7 @@
   "components": [
     {
       "bom-ref": "requirements-L21",
-      "description": "requirements line 21: cyclonedx-bom==5.1.0",
+      "description": "requirements line 21: cyclonedx-bom==7.5.0",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -11,9 +11,9 @@
         }
       ],
       "name": "cyclonedx-bom",
-      "purl": "pkg:pypi/cyclonedx-bom@5.1.0",
+      "purl": "pkg:pypi/cyclonedx-bom@7.5.0",
       "type": "library",
-      "version": "5.1.0"
+      "version": "7.5.0"
     },
     {
       "bom-ref": "requirements-L22",
@@ -32,7 +32,7 @@
     },
     {
       "bom-ref": "requirements-L7",
-      "description": "requirements line 7: google-genai==2.29.0",
+      "description": "requirements line 7: google-genai==2.33.0",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -41,9 +41,9 @@
         }
       ],
       "name": "google-genai",
-      "purl": "pkg:pypi/google-genai@2.29.0",
+      "purl": "pkg:pypi/google-genai@2.33.0",
       "type": "library",
-      "version": "2.29.0"
+      "version": "2.33.0"
     },
     {
       "bom-ref": "requirements-L8",
@@ -122,7 +122,7 @@
     },
     {
       "bom-ref": "requirements-L12",
-      "description": "requirements line 12: pypdf==5.3.1",
+      "description": "requirements line 12: pypdf==6.21.2",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -131,9 +131,9 @@
         }
       ],
       "name": "pypdf",
-      "purl": "pkg:pypi/pypdf@5.3.1",
+      "purl": "pkg:pypi/pypdf@6.21.2",
       "type": "library",
-      "version": "5.3.1"
+      "version": "6.21.2"
     },
     {
       "bom-ref": "requirements-L17",
@@ -152,7 +152,7 @@
     },
     {
       "bom-ref": "requirements-L18",
-      "description": "requirements line 18: pytest-cov==6.0.0",
+      "description": "requirements line 18: pytest-cov==7.1.0",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -161,13 +161,13 @@
         }
       ],
       "name": "pytest-cov",
-      "purl": "pkg:pypi/pytest-cov@6.0.0",
+      "purl": "pkg:pypi/pytest-cov@7.1.0",
       "type": "library",
-      "version": "6.0.0"
+      "version": "7.1.0"
     },
     {
       "bom-ref": "requirements-L19",
-      "description": "requirements line 19: ruff==0.9.10",
+      "description": "requirements line 19: ruff==0.17.2",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -176,9 +176,9 @@
         }
       ],
       "name": "ruff",
-      "purl": "pkg:pypi/ruff@0.9.10",
+      "purl": "pkg:pypi/ruff@0.17.2",
       "type": "library",
-      "version": "0.9.10"
+      "version": "0.17.2"
     },
     {
       "bom-ref": "requirements-L10",
@@ -197,7 +197,7 @@
     },
     {
       "bom-ref": "requirements-L11",
-      "description": "requirements line 11: sqlglot==30.22.0",
+      "description": "requirements line 11: sqlglot==30.24.0",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -206,9 +206,9 @@
         }
       ],
       "name": "sqlglot",
-      "purl": "pkg:pypi/sqlglot@30.22.0",
+      "purl": "pkg:pypi/sqlglot@30.24.0",
       "type": "library",
-      "version": "30.22.0"
+      "version": "30.24.0"
     },
     {
       "bom-ref": "requirements-L6",
@@ -274,7 +274,7 @@
     }
   ],
   "metadata": {
-    "timestamp": "2026-10-10T17:16:20.793971+00:00",
+    "timestamp": "2026-10-27T20:48:33.440037+00:00",
     "tools": {
       "components": [
         {
@@ -378,7 +378,7 @@
       ]
     }
   },
-  "serialNumber": "urn:uuid:13a17af6-619b-4da4-a8e4-2195b84c410b",
+  "serialNumber": "urn:uuid:e92f1dc9-03fe-425e-8903-7d83a469d77b",
   "version": 1,
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",

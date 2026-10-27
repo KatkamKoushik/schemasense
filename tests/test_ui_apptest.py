@@ -1,19 +1,46 @@
-"""Streamlit AppTest integration test for SchemaSense UI workflows."""
-
+import os
 import socket
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from streamlit.testing.v1 import AppTest
 
+from schemasense.connection import build_safe_url, dispose_engine
+
 APP_PATH = str(Path(__file__).resolve().parent.parent / "app.py")
+PG_HOST = os.getenv("SCHEMASENSE_TEST_PG_HOST", "127.0.0.1")
+PG_PORT = int(os.getenv("SCHEMASENSE_TEST_PG_PORT", "5433"))
 
 
-def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
+def is_postgres_ready(
+    host: str = PG_HOST,
+    port: int = PG_PORT,
+    timeout: float = 0.5,
+) -> bool:
+    """Checks if the PostgreSQL test database is open AND authenticated."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
-            return True
+            pass
     except (OSError, ConnectionRefusedError):
+        return False
+
+    try:
+        url = build_safe_url(
+            "PostgreSQL",
+            host,
+            port,
+            "schemasense_test",
+            "test_admin",
+            "test_admin_pass",
+        )
+        engine = create_engine(url, connect_args={"connect_timeout": int(timeout)})
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        dispose_engine(engine)
+        return True
+    except (SQLAlchemyError, OSError):
         return False
 
 
@@ -28,8 +55,10 @@ def test_ui_initial_render():
 
 def test_ui_live_connection_and_disconnect():
     """Verifies UI connection, least-privilege reporting, and disconnect lifecycle."""
-    if not is_port_open("127.0.0.1", 5433):
-        pytest.skip("PostgreSQL test container is not available.")
+    if not is_postgres_ready():
+        pytest.skip(
+            f"PostgreSQL test container ({PG_HOST}:{PG_PORT}) is not reachable or auth failed."
+        )
 
     at = AppTest.from_file(APP_PATH, default_timeout=20)
     at.run()
@@ -39,8 +68,8 @@ def test_ui_live_connection_and_disconnect():
     text_inputs = [ti for ti in at.sidebar.text_input]
     assert len(text_inputs) >= 6
 
-    text_inputs[1].set_value("127.0.0.1")
-    text_inputs[2].set_value("5433")
+    text_inputs[1].set_value(PG_HOST)
+    text_inputs[2].set_value(str(PG_PORT))
     text_inputs[3].set_value("schemasense_test")
     text_inputs[4].set_value("schemasense_readonly")
     text_inputs[5].set_value("readonly_pass")
@@ -71,15 +100,17 @@ def test_ui_live_connection_and_disconnect():
 
 def test_ui_privileged_connection_warning():
     """Verifies that connecting as superuser/admin renders a security advisory in the UI."""
-    if not is_port_open("127.0.0.1", 5433):
-        pytest.skip("PostgreSQL test container is not available.")
+    if not is_postgres_ready():
+        pytest.skip(
+            f"PostgreSQL test container ({PG_HOST}:{PG_PORT}) is not reachable or auth failed."
+        )
 
     at = AppTest.from_file(APP_PATH, default_timeout=20)
     at.run()
 
     text_inputs = [ti for ti in at.sidebar.text_input]
-    text_inputs[1].set_value("127.0.0.1")
-    text_inputs[2].set_value("5433")
+    text_inputs[1].set_value(PG_HOST)
+    text_inputs[2].set_value(str(PG_PORT))
     text_inputs[3].set_value("schemasense_test")
     text_inputs[4].set_value("test_admin")
     text_inputs[5].set_value("test_admin_pass")
@@ -99,15 +130,17 @@ def test_ui_privileged_connection_warning():
 
 def test_ui_enforce_least_privilege_blocks_admin():
     """Verifies that selecting enforce least-privilege rejects admin credentials in the UI."""
-    if not is_port_open("127.0.0.1", 5433):
-        pytest.skip("PostgreSQL test container is not available.")
+    if not is_postgres_ready():
+        pytest.skip(
+            f"PostgreSQL test container ({PG_HOST}:{PG_PORT}) is not reachable or auth failed."
+        )
 
     at = AppTest.from_file(APP_PATH, default_timeout=20)
     at.run()
 
     text_inputs = [ti for ti in at.sidebar.text_input]
-    text_inputs[1].set_value("127.0.0.1")
-    text_inputs[2].set_value("5433")
+    text_inputs[1].set_value(PG_HOST)
+    text_inputs[2].set_value(str(PG_PORT))
     text_inputs[3].set_value("schemasense_test")
     text_inputs[4].set_value("test_admin")
     text_inputs[5].set_value("test_admin_pass")

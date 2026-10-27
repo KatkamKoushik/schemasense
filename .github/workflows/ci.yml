@@ -27,9 +27,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
 
-      - name: Dependency vulnerability audit (pip-audit)
+      - name: Dependency vulnerability audit (pip-audit & Master Checklist S12 triage)
         run: |
-          pip-audit -r requirements.txt
+          python scripts/security_audit.py
 
       - name: Secret scanning (detect-secrets)
         run: |

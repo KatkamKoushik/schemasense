@@ -17,7 +17,7 @@ PG_PORT = int(os.getenv("SCHEMASENSE_TEST_PG_PORT", "5433"))
 def is_postgres_ready(
     host: str = PG_HOST,
     port: int = PG_PORT,
-    timeout: float = 0.5,
+    timeout: float = 2.0,
 ) -> bool:
     """Checks if the PostgreSQL test database is open AND authenticated."""
     try:
@@ -35,7 +35,8 @@ def is_postgres_ready(
             "test_admin",
             "test_admin_pass",
         )
-        engine = create_engine(url, connect_args={"connect_timeout": int(timeout)})
+        connect_timeout = max(1, int(timeout))
+        engine = create_engine(url, connect_args={"connect_timeout": connect_timeout})
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         dispose_engine(engine)

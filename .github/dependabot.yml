@@ -21,6 +21,24 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
+    groups:
+      production-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "pandas"
+          - "streamlit"
+          - "sqlalchemy"
+    ignore:
+      # Streamlit currently requires pandas < 3.0
+      - dependency-name: "pandas"
+        versions: [">= 3.0.0"]
+      # Streamlit 1.66+ dropped Python 3.10 support
+      - dependency-name: "streamlit"
+        versions: [">= 1.66.0"]
+      # SQLAlchemy 2.1+ dropped Python 3.10 distribution support
+      - dependency-name: "sqlalchemy"
+        versions: [">= 2.1.0"]
 
   # GitHub Actions Workflows
   - package-ecosystem: "github-actions"

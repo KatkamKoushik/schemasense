@@ -45,7 +45,7 @@ def is_database_authenticated(
     db_name: str,
     user: str,
     password: str,
-    timeout: float = 0.5,
+    timeout: float = 2.0,
 ) -> bool:
     """Checks if a network port is reachable AND the target test database authenticates."""
     try:
@@ -56,7 +56,8 @@ def is_database_authenticated(
 
     try:
         url = build_safe_url(db_type, host, port, db_name, user, password)
-        engine = create_engine(url, connect_args={"connect_timeout": int(timeout)})
+        connect_timeout = max(1, int(timeout))
+        engine = create_engine(url, connect_args={"connect_timeout": connect_timeout})
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         dispose_engine(engine)

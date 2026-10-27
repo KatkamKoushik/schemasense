@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "schemasense"
+version = "0.2.0"
+description = "Intelligent Data Dictionary & Enterprise Data Agent"
+authors = [{ name = "Katkam Koushik", email = "koushikkatkam@gmail.com" }]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "streamlit>=1.39.0,<1.60.0",
+    "google-genai>=2.33.0",
+    "pandas>=2.1.0,<3.0.0",
+    "plotly>=5.20.0",
+    "sqlalchemy>=2.0.0,<2.1.0",
+    "sqlglot>=30.24.0",
+    "pypdf>=6.21.2",
+    "psycopg2-binary>=2.9.0",
+    "pymysql>=1.1.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+markers = [
+    "unit: Hermetic, fast in-memory unit and mock tests with zero external dependencies",
+    "integration: Live database and container integration tests (PostgreSQL, MySQL)",
+    "adversarial: Security, injection, AST parser, and threat model verification tests",
+    "ui: Headless Streamlit AppTest integration and UI workflow tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.coverage.run]
+source = ["schemasense"]
+omit = [
+    "tests/*",
+    "app.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "BLE",
+]
+ignore = [
+    "E501",
+    "W291",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["schemasense"]

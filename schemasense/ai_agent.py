@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from schemasense.prompts import (
+    build_sql_agent_system_instruction,
+)
 from schemasense.runtime.backends.base import (
     BackendInfo,
     BackendNotAvailableError,
@@ -239,30 +242,10 @@ class SchemaSenseAIAgent:
         dialect: str = "postgres",
     ) -> str:
         """Builds strict, schema-grounded system instructions."""
-        schema_block = (
-            schema_context
-            if schema_context.strip()
-            else "No database connected. Provide general SQL guidance without referencing specific tables."
-        )
-        rules_block = (
-            f"\n\nEnterprise Business Constraints:\n{business_rules_context}"
-            if business_rules_context.strip()
-            else ""
-        )
-
-        return (
-            f"You are SchemaSense, a Principal Enterprise Data Architect and Analytics Agent.\n"
-            f"Target Database Dialect: {dialect}\n\n"
-            f"Database Schema Context:\n{schema_block}"
-            f"{rules_block}\n\n"
-            f"Mandatory Operational Guardrails:\n"
-            f"1. SCHEMA GROUNDING: Reference ONLY tables and columns explicitly present in the schema context above.\n"
-            f"   Never invent, hallucinate, or assume tables that are not listed.\n"
-            f"2. READ-ONLY CONSTRAINT: Generate strictly single-statement SELECT queries.\n"
-            f"   Never produce DROP, DELETE, INSERT, UPDATE, ALTER, TRUNCATE, or stacked semicolon queries.\n"
-            f"3. BUSINESS RULE GROUNDING: Honor all enterprise business constraints.\n"
-            f"4. OUTPUT FORMAT: When structured output is requested, provide explanation, valid sql_query, and target_tables.\n"
-            f"   Wrap raw SQL in ```sql fences when generating unstructured stream text."
+        return build_sql_agent_system_instruction(
+            dialect=dialect,
+            schema_context=schema_context,
+            business_rules_context=business_rules_context,
         )
 
     def generate_structured(

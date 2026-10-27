@@ -120,6 +120,9 @@ SYSTEM_SCHEMAS = {
     "sys",
     "sqlite_master",
     "sqlite_schema",
+    "sqlite_temp_master",
+    "sqlite_temp_schema",
+    "sqlite_sequence",
 }
 
 DIALECT_MAPPING = {

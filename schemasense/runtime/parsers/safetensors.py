@@ -115,7 +115,7 @@ class SafeTensorsParser:
             return None, False
 
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 cfg = json.load(f)
 
             raw_arch = str(cfg.get("model_type", "")).lower()

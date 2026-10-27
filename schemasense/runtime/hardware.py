@@ -84,7 +84,7 @@ class HardwareInspector:
         if sys.platform.startswith("linux") and os.path.exists("/proc/meminfo"):
             try:
                 mem_data: dict[str, int] = {}
-                with open("/proc/meminfo", "r", encoding="utf-8") as f:
+                with open("/proc/meminfo", encoding="utf-8") as f:
                     for line in f:
                         parts = line.split(":")
                         if len(parts) == 2:
@@ -170,7 +170,7 @@ class HardwareInspector:
         is_wsl = False
         try:
             if os.path.exists("/proc/version"):
-                with open("/proc/version", "r", encoding="utf-8") as f:
+                with open("/proc/version", encoding="utf-8") as f:
                     ver = f.read().lower()
                     if "microsoft" in ver or "wsl" in ver:
                         is_wsl = True

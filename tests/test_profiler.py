@@ -86,3 +86,23 @@ def test_detect_column_pii_entities():
     pii_type, ratio = detect_column_pii(safe_text)
     assert pii_type is None
     assert ratio == 0.0
+
+
+def test_escape_sql_identifier_quote_handling():
+    """Verifies dialect-aware escaping for identifiers containing embedded quote characters."""
+    from schemasense.profiler import build_safe_profiling_query, escape_sql_identifier
+
+    # PostgreSQL / ANSI: double quotes are escaped as ""
+    assert escape_sql_identifier('user"table', dialect="postgres") == '"user""table"'
+    assert escape_sql_identifier("plain_tbl", dialect="postgres") == '"plain_tbl"'
+
+    # MySQL: backticks are escaped as ``
+    assert escape_sql_identifier("user`table", dialect="mysql") == "`user``table`"
+    assert escape_sql_identifier("plain_tbl", dialect="mysql") == "`plain_tbl`"
+
+    # Query generation with schema and quotes
+    q_pg = build_safe_profiling_query('my"schema.user"table', dialect="postgres")
+    assert q_pg == 'SELECT * FROM "my""schema"."user""table" LIMIT 1000'
+
+    q_my = build_safe_profiling_query("my`schema.user`table", dialect="mysql")
+    assert q_my == "SELECT * FROM `my``schema`.`user``table` LIMIT 1000"

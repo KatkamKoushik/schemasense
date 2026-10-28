@@ -337,3 +337,98 @@ def test_sql_guard_disallows_system_catalog_in_subquery():
         "sqlite_master" in str(res.error_message).lower()
         or "unauthorized" in str(res.error_message).lower()
     )
+
+
+def test_execute_safe_query_postgres_read_only_failure_fails_closed():
+    """Security property test: If setting PostgreSQL read-only fails, query execution is aborted."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy.exc import OperationalError
+
+    from schemasense.sql_guard import SQLSecurityViolation, execute_safe_query
+
+    mock_engine = MagicMock()
+    mock_conn = MagicMock()
+    mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+    def _mock_exec_driver_sql(sql):
+        if "SET TRANSACTION READ ONLY" in sql:
+            raise OperationalError(
+                "SET TRANSACTION READ ONLY", {}, Exception("read-only setup rejected")
+            )
+        return MagicMock()
+
+    mock_conn.exec_driver_sql.side_effect = _mock_exec_driver_sql
+
+    with pytest.raises(
+        SQLSecurityViolation, match="Unable to enforce PostgreSQL read-only"
+    ):
+        execute_safe_query(
+            engine=mock_engine,
+            query="SELECT * FROM customers;",
+            allowed_tables=["customers"],
+            dialect="postgres",
+        )
+
+    # Prove query was never passed to execute
+    mock_conn.execute.assert_not_called()
+
+
+def test_execute_safe_query_mysql_read_only_failure_fails_closed():
+    """Security property test: If setting MySQL read-only fails, query execution is aborted."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy.exc import OperationalError
+
+    from schemasense.sql_guard import SQLSecurityViolation, execute_safe_query
+
+    mock_engine = MagicMock()
+    mock_conn = MagicMock()
+    mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+    def _mock_exec_driver_sql(sql):
+        if "SET SESSION TRANSACTION READ ONLY" in sql:
+            raise OperationalError("SET SESSION", {}, Exception("permission denied"))
+        return MagicMock()
+
+    mock_conn.exec_driver_sql.side_effect = _mock_exec_driver_sql
+
+    with pytest.raises(SQLSecurityViolation, match="Unable to enforce MySQL read-only"):
+        execute_safe_query(
+            engine=mock_engine,
+            query="SELECT * FROM customers;",
+            allowed_tables=["customers"],
+            dialect="mysql",
+        )
+
+    mock_conn.execute.assert_not_called()
+
+
+def test_execute_safe_query_mysql_pool_reset_restores_read_write():
+    """Security property test: On query completion, MySQL resets session to READ WRITE in finally."""
+    from unittest.mock import MagicMock
+
+    from schemasense.sql_guard import execute_safe_query
+
+    mock_engine = MagicMock()
+    mock_conn = MagicMock()
+    mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+    executed_driver_sqls = []
+    mock_conn.exec_driver_sql.side_effect = lambda sql: executed_driver_sqls.append(sql)
+
+    mock_result = MagicMock()
+    mock_result.fetchmany.return_value = []
+    mock_result.keys.return_value = ["id"]
+    mock_conn.execute.return_value = mock_result
+
+    execute_safe_query(
+        engine=mock_engine,
+        query="SELECT id FROM customers;",
+        allowed_tables=["customers"],
+        dialect="mysql",
+    )
+
+    assert any(
+        "SET SESSION TRANSACTION READ WRITE" in sql for sql in executed_driver_sqls
+    )

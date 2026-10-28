@@ -192,12 +192,15 @@ class DatabaseSchema:
             lines.append("}\n")
 
             for fk in table.foreign_keys:
-                if (
-                    not fk.is_composite
-                    and fk.referred_table
-                    and fk.constrained_column
-                    and fk.referred_column
-                ):
+                if not fk.referred_table:
+                    continue
+                if fk.is_composite:
+                    cols = ", ".join(fk.constrained_columns)
+                    ref_cols = ", ".join(fk.referred_columns)
+                    refs.append(
+                        f"Ref: {t_name}.({cols}) > {fk.referred_table}.({ref_cols})"
+                    )
+                elif fk.constrained_column and fk.referred_column:
                     refs.append(
                         f"Ref: {t_name}.{fk.constrained_column} > {fk.referred_table}.{fk.referred_column}"
                     )
@@ -392,6 +395,14 @@ def inspect_database_schema(
             except (SQLAlchemyError, NotImplementedError) as err:
                 logger.debug(f"Could not extract indexes for {table_name}: {err}")
 
+            table_comment = None
+            try:
+                c_info = inspector.get_table_comment(table_name, schema=schema_name)
+                if c_info and isinstance(c_info, dict):
+                    table_comment = c_info.get("text")
+            except (SQLAlchemyError, NotImplementedError, AttributeError):
+                pass
+
             tables_dict[table_name] = TableSchema(
                 name=table_name,
                 columns=columns,
@@ -399,6 +410,7 @@ def inspect_database_schema(
                 foreign_keys=fks,
                 unique_constraints=unique_constraints,
                 indexes=indexes,
+                comment=table_comment,
             )
         except (SQLAlchemyError, RuntimeError) as e:
             logger.warning(f"Could not inspect table '{table_name}': {e}")

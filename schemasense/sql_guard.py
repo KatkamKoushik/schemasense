@@ -373,8 +373,10 @@ def execute_safe_query(
                     with conn.begin():
                         try:
                             conn.exec_driver_sql("SET TRANSACTION READ ONLY")
-                        except (SQLAlchemyError, OperationalError):
-                            pass
+                        except (SQLAlchemyError, OperationalError) as err:
+                            raise SQLSecurityViolation(
+                                f"Database security failure: Unable to enforce PostgreSQL read-only transaction: {err}"
+                            ) from err
                         conn.exec_driver_sql(
                             f"SET LOCAL statement_timeout = '{int(clamped_timeout_ms)}'"
                         )
@@ -386,31 +388,45 @@ def execute_safe_query(
                         rows = result.fetchmany(clamped_max_rows + 1)
                         cols = list(result.keys())
 
-                # 2. MySQL: Enforce Read-Only Mode & Scoped max_execution_time with Reset
+                # 2. MySQL: Enforce Read-Only Mode & Scoped max_execution_time with Guaranteed Reset & Pool Invalidation
                 elif read_dialect == "mysql":
                     try:
                         conn.exec_driver_sql("SET SESSION TRANSACTION READ ONLY")
-                    except (SQLAlchemyError, OperationalError):
-                        pass
-                    conn.exec_driver_sql(
-                        f"SET SESSION max_execution_time = {int(clamped_timeout_ms)}"
-                    )
+                    except (SQLAlchemyError, OperationalError) as err:
+                        raise SQLSecurityViolation(
+                            f"Database security failure: Unable to enforce MySQL read-only session: {err}"
+                        ) from err
+
                     try:
+                        conn.exec_driver_sql(
+                            f"SET SESSION max_execution_time = {int(clamped_timeout_ms)}"
+                        )
                         result = conn.execute(text(exec_sql))
                         rows = result.fetchmany(clamped_max_rows + 1)
                         cols = list(result.keys())
                     finally:
                         try:
                             conn.exec_driver_sql("SET SESSION max_execution_time = 0")
-                        except (SQLAlchemyError, OperationalError):
-                            pass
+                            conn.exec_driver_sql("SET SESSION TRANSACTION READ WRITE")
+                        except (
+                            SQLAlchemyError,
+                            OperationalError,
+                            RuntimeError,
+                            OSError,
+                        ):
+                            try:
+                                conn.invalidate()
+                            except (SQLAlchemyError, RuntimeError, OSError):
+                                pass
 
-                # 3. SQLite: Enforce query_only PRAGMA & Progress Handler Timeout
+                # 3. SQLite: Enforce query_only PRAGMA & Progress Handler Timeout with Guaranteed Reset
                 else:
                     try:
                         conn.exec_driver_sql("PRAGMA query_only = ON")
-                    except (SQLAlchemyError, OperationalError):
-                        pass
+                    except (SQLAlchemyError, OperationalError) as err:
+                        raise SQLSecurityViolation(
+                            f"Database security failure: Unable to enforce SQLite query_only mode: {err}"
+                        ) from err
 
                     raw_conn = getattr(
                         conn.connection, "dbapi_connection", conn.connection
@@ -435,6 +451,18 @@ def execute_safe_query(
                             try:
                                 raw_conn.set_progress_handler(None, 0)
                             except (AttributeError, RuntimeError):
+                                pass
+                        try:
+                            conn.exec_driver_sql("PRAGMA query_only = OFF")
+                        except (
+                            SQLAlchemyError,
+                            OperationalError,
+                            RuntimeError,
+                            OSError,
+                        ):
+                            try:
+                                conn.invalidate()
+                            except (SQLAlchemyError, RuntimeError, OSError):
                                 pass
 
                 is_truncated = len(rows) > clamped_max_rows

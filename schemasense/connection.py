@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import os
+import socket
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -28,6 +31,10 @@ class DatabaseConnectionError(RuntimeError):
 
 class PrivilegedAccountError(PermissionError):
     """Raised when an operation requires a least-privilege account but a privileged account is detected."""
+
+
+class SSRFProtectionError(ValueError):
+    """Raised when a target database host points to prohibited cloud metadata or restricted network ranges."""
 
 
 class ConcurrencyLimitExceeded(RuntimeError):
@@ -227,6 +234,186 @@ def inspect_account_privileges(
 
 
 # ─────────────────────────────────────────────────────────────
+# SSRF & NETWORK BOUNDARY DEFENSE
+# ─────────────────────────────────────────────────────────────
+
+# Unconditionally blocked IP networks across all environments
+ALWAYS_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("169.254.0.0/16"),  # IPv4 Link-local
+    ipaddress.ip_network("fe80::/10"),  # IPv6 Link-local
+    ipaddress.ip_network("224.0.0.0/4"),  # IPv4 Multicast
+    ipaddress.ip_network("ff00::/8"),  # IPv6 Multicast
+    ipaddress.ip_network("240.0.0.0/4"),  # Reserved
+    ipaddress.ip_network("0.0.0.0/8"),  # Unspecified IPv4
+    ipaddress.ip_network("::/128"),  # Unspecified IPv6
+]
+
+# Explicit Cloud Metadata IP Endpoints
+CLOUD_METADATA_IPS = {
+    ipaddress.ip_address("169.254.169.254"),  # AWS/GCP/Azure IMDSv1/v2
+    ipaddress.ip_address("100.100.100.200"),  # Alibaba Cloud IMDS
+    ipaddress.ip_address("fd00:ec2::254"),  # AWS IMDSv6
+}
+
+# Cloud Metadata Hostname substrings
+BLOCKED_METADATA_HOSTS = {
+    "169.254.169.254",
+    "metadata.google.internal",
+    "metadata.internal",
+    "instance-data",
+    "100.100.100.200",
+}
+
+# RFC 1918 / RFC 4193 Private Networks
+RFC_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),  # IPv6 Unique Local
+]
+
+LOOPBACK_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+]
+
+
+def validate_database_host(
+    host: str,
+    port: int = 0,
+    resolve_dns: bool = False,
+    allow_private: bool | None = None,
+    allow_local: bool | None = None,
+    allowed_cidrs: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    """
+    Validates target database host against SSRF, cloud metadata, and prohibited network ranges.
+    Deployment-aware: enables legitimate enterprise private network connections while strictly
+    blocking cloud metadata endpoints across all environments.
+
+    Returns:
+        tuple[str, list[str]]: (normalized_host, list of verified resolved IP strings)
+    """
+    clean_host = str(host or "").strip().lower()
+    if not clean_host:
+        raise ConnectionConfigError("Database host cannot be empty.")
+
+    # 1. String-level metadata check
+    for blocked in BLOCKED_METADATA_HOSTS:
+        if clean_host == blocked or clean_host.endswith(f".{blocked}"):
+            raise SSRFProtectionError(
+                f"Connection rejected: Host '{clean_host}' is a prohibited cloud metadata endpoint."
+            )
+
+    is_prod = (
+        os.getenv("SCHEMASENSE_ENV", "").lower() == "production"
+        or os.getenv("ENVIRONMENT", "").lower() == "production"
+    )
+
+    # 2. Check if clean_host is a direct IP literal
+    direct_ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None
+    try:
+        # Strip IPv6 brackets if present
+        ip_str = clean_host.strip("[]")
+        direct_ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        pass
+
+    verified_ips: list[str] = []
+
+    if direct_ip is not None:
+        ips_to_check = [direct_ip]
+        verified_ips.append(str(direct_ip))
+    elif resolve_dns:
+        try:
+            addr_info = socket.getaddrinfo(
+                clean_host, port or 5432, proto=socket.IPPROTO_TCP
+            )
+            for res in addr_info:
+                sockaddr = res[4]
+                ip_cand = sockaddr[0]
+                try:
+                    ips_to_check_obj = ipaddress.ip_address(ip_cand)
+                    if str(ips_to_check_obj) not in verified_ips:
+                        verified_ips.append(str(ips_to_check_obj))
+                except ValueError:
+                    continue
+            ips_to_check = [ipaddress.ip_address(ip) for ip in verified_ips]
+        except (socket.gaierror, OSError) as err:
+            logger.debug(f"DNS pre-resolution failed for host '{clean_host}': {err}")
+            ips_to_check = []
+    else:
+        ips_to_check = []
+
+    # Evaluate each IP against policies
+    for ip in ips_to_check:
+        # Unconditionally block cloud metadata
+        if ip in CLOUD_METADATA_IPS:
+            raise SSRFProtectionError(
+                f"SSRF Protection: IP address '{ip}' is a prohibited cloud metadata service."
+            )
+
+        # Unconditionally block link-local and multicast
+        for net in ALWAYS_BLOCKED_NETWORKS:
+            if ip in net:
+                raise SSRFProtectionError(
+                    f"SSRF Protection: IP address '{ip}' belongs to prohibited subnet '{net}'."
+                )
+
+        # Loopback policy
+        is_loopback = any(ip in net for net in LOOPBACK_NETWORKS)
+        if is_loopback:
+            local_allowed = allow_local
+            if local_allowed is None:
+                local_allowed = os.getenv("SCHEMASENSE_ALLOW_LOCAL_DB", "").lower() in (
+                    "true",
+                    "1",
+                    "yes",
+                )
+            if is_prod and not local_allowed:
+                raise SSRFProtectionError(
+                    f"SSRF Protection: Loopback connections ('{ip}') are forbidden in production mode. "
+                    "Set SCHEMASENSE_ALLOW_LOCAL_DB=true to permit local database connections."
+                )
+
+        # Private RFC network policy (Deployment-aware)
+        is_private = any(ip in net for net in RFC_PRIVATE_NETWORKS)
+        if is_private and is_prod:
+            priv_allowed = allow_private
+            if priv_allowed is None:
+                # Default to true for enterprise internal VPC deployments
+                priv_allowed = os.getenv(
+                    "SCHEMASENSE_ALLOW_PRIVATE_IPS", "true"
+                ).lower() in ("true", "1", "yes")
+            if not priv_allowed:
+                # Check explicit CIDR allowlist
+                configured_cidrs = allowed_cidrs or []
+                if not configured_cidrs and (
+                    env_cidrs := os.getenv("SCHEMASENSE_ALLOWED_DB_CIDRS")
+                ):
+                    configured_cidrs = [
+                        c.strip() for c in env_cidrs.split(",") if c.strip()
+                    ]
+
+                allowed = False
+                for c_str in configured_cidrs:
+                    try:
+                        if ip in ipaddress.ip_network(c_str):
+                            allowed = True
+                            break
+                    except ValueError:
+                        continue
+
+                if not allowed:
+                    raise SSRFProtectionError(
+                        f"SSRF Protection: Connection to private IP '{ip}' is blocked by policy. "
+                        "Add CIDR to SCHEMASENSE_ALLOWED_DB_CIDRS or set SCHEMASENSE_ALLOW_PRIVATE_IPS=true."
+                    )
+
+    return clean_host, verified_ips
+
+
+# ─────────────────────────────────────────────────────────────
 # SAFE CONNECTION & POOL MANAGEMENT
 # ─────────────────────────────────────────────────────────────
 
@@ -265,7 +452,7 @@ def build_safe_url(
         )
 
     driver = SUPPORTED_DIALECTS[db_type]
-    clean_host = str(host).strip()
+    clean_host, _ = validate_database_host(host, port=clean_port, resolve_dns=False)
     clean_db = str(db_name).strip()
     clean_user = str(user).strip()
 
@@ -312,6 +499,13 @@ def create_safe_engine(
         enforce_least_privilege: If True, rejects privileged accounts with PrivilegedAccountError
         ssl_mode: SSL encryption mode for cloud databases (AWS RDS, Azure, GCP Cloud SQL, Supabase)
     """
+    # Validate host destination with DNS resolution check
+    verified_ips: list[str] = []
+    if db_type in ("PostgreSQL", "MySQL") and host:
+        _, verified_ips = validate_database_host(
+            host, port=int(port or 0), resolve_dns=True
+        )
+
     url = build_safe_url(
         db_type, host, port, db_name, user, password, ssl_mode=ssl_mode
     )
@@ -319,6 +513,9 @@ def create_safe_engine(
     connect_args = {}
     if db_type in ("PostgreSQL", "MySQL"):
         connect_args["connect_timeout"] = connect_timeout
+    # Pin verified IP address for PostgreSQL to eliminate TOCTOU / DNS rebinding risks
+    if db_type == "PostgreSQL" and verified_ips:
+        connect_args["hostaddr"] = verified_ips[0]
     if db_type == "MySQL":
         connect_args.update(
             {

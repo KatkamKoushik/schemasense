@@ -198,3 +198,76 @@ def test_build_safe_url_cloud_ssl_parameters():
         ssl_mode="disable",
     )
     assert "sslmode" not in url_pg_none.query
+
+
+def test_ssrf_cloud_metadata_blocked():
+    """Verifies that AWS/GCP/Azure cloud metadata endpoints are unconditionally blocked."""
+    from schemasense.connection import SSRFProtectionError, validate_database_host
+
+    for bad_host in (
+        "169.254.169.254",
+        "metadata.google.internal",
+        "instance-data",
+        "100.100.100.200",
+    ):
+        with pytest.raises(SSRFProtectionError, match="prohibited cloud metadata"):
+            validate_database_host(bad_host, resolve_dns=False)
+
+
+def test_ssrf_link_local_and_multicast_blocked():
+    """Verifies that link-local and multicast IPs are unconditionally blocked."""
+    from schemasense.connection import SSRFProtectionError, validate_database_host
+
+    for bad_ip in ("169.254.10.20", "224.0.0.1", "240.0.0.1"):
+        with pytest.raises(SSRFProtectionError, match="prohibited subnet"):
+            validate_database_host(bad_ip, resolve_dns=True)
+
+
+def test_ssrf_production_loopback_policy(monkeypatch):
+    """Verifies that loopback connections are rejected in production unless explicitly permitted."""
+    from schemasense.connection import SSRFProtectionError, validate_database_host
+
+    monkeypatch.setenv("SCHEMASENSE_ENV", "production")
+    monkeypatch.delenv("SCHEMASENSE_ALLOW_LOCAL_DB", raising=False)
+
+    # In production without allow flag -> blocked
+    with pytest.raises(
+        SSRFProtectionError, match="Loopback connections .* are forbidden in production"
+    ):
+        validate_database_host("127.0.0.1", resolve_dns=True)
+
+    # In production with allow flag -> permitted
+    monkeypatch.setenv("SCHEMASENSE_ALLOW_LOCAL_DB", "true")
+    host, ips = validate_database_host("127.0.0.1", resolve_dns=True)
+    assert host == "127.0.0.1"
+    assert "127.0.0.1" in ips
+
+
+def test_ssrf_deployment_aware_private_ip_policy(monkeypatch):
+    """Verifies deployment-aware private network policies (enterprise VPC vs public SaaS)."""
+    from schemasense.connection import SSRFProtectionError, validate_database_host
+
+    monkeypatch.setenv("SCHEMASENSE_ENV", "production")
+
+    # 1. Default enterprise mode (SCHEMASENSE_ALLOW_PRIVATE_IPS=true): Private IPs permitted for internal DBs
+    monkeypatch.setenv("SCHEMASENSE_ALLOW_PRIVATE_IPS", "true")
+    host, ips = validate_database_host("10.0.5.21", resolve_dns=True)
+    assert host == "10.0.5.21"
+    assert "10.0.5.21" in ips
+
+    # 2. Strict SaaS mode (SCHEMASENSE_ALLOW_PRIVATE_IPS=false): Private IPs blocked
+    monkeypatch.setenv("SCHEMASENSE_ALLOW_PRIVATE_IPS", "false")
+    monkeypatch.delenv("SCHEMASENSE_ALLOWED_DB_CIDRS", raising=False)
+    with pytest.raises(
+        SSRFProtectionError, match="Connection to private IP .* is blocked by policy"
+    ):
+        validate_database_host("10.0.5.21", resolve_dns=True)
+
+    # 3. Strict SaaS mode with explicit CIDR allowlist
+    monkeypatch.setenv("SCHEMASENSE_ALLOWED_DB_CIDRS", "10.0.0.0/16,192.168.1.0/24")
+    host, ips = validate_database_host("10.0.5.21", resolve_dns=True)
+    assert host == "10.0.5.21"
+
+    # Non-matched private IP still blocked
+    with pytest.raises(SSRFProtectionError, match="blocked by policy"):
+        validate_database_host("172.16.0.1", resolve_dns=True)

@@ -1974,15 +1974,35 @@ with tab_schema:
                         unsafe_allow_html=True,
                     )
                     if table_info.foreign_keys:
-                        fk_records = [
-                            {
-                                "Column": fk["constrained_columns"][0]
-                                if fk["constrained_columns"]
-                                else "N/A",
-                                "References": f"{fk['referred_table']}.{fk['referred_columns'][0] if fk['referred_columns'] else 'N/A'}",
-                            }
-                            for fk in table_info.foreign_keys
-                        ]
+                        fk_records = []
+                        for fk in table_info.foreign_keys:
+                            cols = (
+                                getattr(fk, "constrained_columns", None)
+                                if not isinstance(fk, dict)
+                                else fk.get("constrained_columns")
+                            )
+                            ref_tbl = (
+                                getattr(fk, "referred_table", None)
+                                if not isinstance(fk, dict)
+                                else fk.get("referred_table")
+                            )
+                            ref_cols = (
+                                getattr(fk, "referred_columns", None)
+                                if not isinstance(fk, dict)
+                                else fk.get("referred_columns")
+                            )
+                            col_str = ", ".join(cols) if cols else "N/A"
+                            ref_str = (
+                                f"{ref_tbl}.{', '.join(ref_cols)}"
+                                if ref_tbl and ref_cols
+                                else (ref_tbl or "N/A")
+                            )
+                            fk_records.append(
+                                {
+                                    "Column": col_str,
+                                    "References": ref_str,
+                                }
+                            )
                         st.dataframe(
                             pd.DataFrame(fk_records),
                             use_container_width=True,

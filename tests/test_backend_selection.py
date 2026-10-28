@@ -109,6 +109,21 @@ class TestAgentBackendSelectionConstruction:
         assert agent_ol.backend_type == "ollama"
         assert agent_ol.is_local is True
 
+        agent_az = SchemaSenseAIAgent(
+            backend_type="azure_openai", api_key="sk-az", model_name="gpt-4o"
+        )
+        assert agent_az.backend_type == "azure_openai"
+
+        agent_bed = SchemaSenseAIAgent(
+            backend_type="aws_bedrock", api_key="sk-bed", model_name="nova"
+        )
+        assert agent_bed.backend_type == "aws_bedrock"
+
+        agent_cf = SchemaSenseAIAgent(
+            backend_type="cloudflare_workers_ai", api_key="sk-cf", model_name="llama"
+        )
+        assert agent_cf.backend_type == "cloudflare_workers_ai"
+
     def test_backend_type_aliases_normalize_correctly(self, tmp_path):
         """Aliases 'cloud' and 'local' map cleanly to gemini and llama_cpp."""
         agent_cloud = SchemaSenseAIAgent(
@@ -490,9 +505,9 @@ class TestStreamlitAppTestUIBackendSwitching:
         assert len(text_inputs) >= 6
         assert "Gemini API Key" in text_inputs[0].label
 
-        # Telemetry strip reflects Cloud Gemini
+        # Live gateway bar reflects Cloud Gemini
         chat_markdowns = [m.value for m in at.markdown]
-        assert any("Inference: <strong>Cloud (Gemini" in val for val in chat_markdowns)
+        assert any("Gemini" in val for val in chat_markdowns)
 
     def test_switch_to_local_backend_renders_model_path_input(self):
         at = AppTest.from_file(APP_PATH, default_timeout=20)
@@ -510,11 +525,9 @@ class TestStreamlitAppTestUIBackendSwitching:
         text_inputs = list(at.sidebar.text_input)
         assert "Local GGUF Model Path" in text_inputs[0].label
 
-        # Verify chat telemetry strip reflects local inference
+        # Verify chat live bar reflects local inference
         chat_markdowns = [m.value for m in at.markdown]
-        assert any(
-            "Inference: <strong>Local (llama.cpp" in val for val in chat_markdowns
-        )
+        assert any("Llama_Cpp" in val or "llama.cpp" in val for val in chat_markdowns)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

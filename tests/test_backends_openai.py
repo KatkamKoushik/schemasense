@@ -51,6 +51,36 @@ def test_openai_backend_info_and_availability():
     assert backend.is_available() is True
 
 
+def test_azure_and_bedrock_and_cloudflare_backend_initialization():
+    azure = OpenAICompatBackend(
+        model_name="gpt-4o",
+        api_key="azure-test-key",
+        base_url="https://mycorp.openai.azure.com/openai/deployments/gpt-4o",
+        provider_name="azure_openai",
+    )
+    headers = azure._build_headers()
+    assert headers["api-key"] == "azure-test-key"
+    assert "https://mycorp.openai.azure.com" in azure._get_completions_url()
+
+    bedrock = OpenAICompatBackend(
+        model_name="anthropic.claude-3-5-sonnet-20241022-v2:0",
+        api_key="test-bedrock-token",
+        base_url="http://localhost:8000/v1",
+        provider_name="aws_bedrock",
+    )
+    assert bedrock.is_available() is True
+    assert bedrock.get_info().backend_id.startswith("aws_bedrock")
+
+    cf = OpenAICompatBackend(
+        model_name="@cf/meta/llama-3.3-70b-instruct",
+        api_key="cf-test-token",
+        base_url="https://api.cloudflare.com/client/v4/accounts/12345/ai/v1",
+        provider_name="cloudflare_workers_ai",
+    )
+    assert cf.is_available() is True
+    assert cf.get_info().backend_id.startswith("cloudflare_workers_ai")
+
+
 def test_ollama_local_declaration():
     backend = OpenAICompatBackend(
         model_name="llama3.2",

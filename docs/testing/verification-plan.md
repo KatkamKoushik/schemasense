@@ -126,9 +126,9 @@ docker compose -f docker-compose.test.yml down -v
 
 ---
 
-## 7. Current Test Inventory (382 Tests Total)
+## 7. Current Test Inventory (387 Tests Total)
 
-- **SQLGuard & AST Adversarial Suite (`test_sql_guard.py`)**: 50 Passed
+- **SQLGuard & AST Adversarial Suite (`test_sql_guard.py`)**: 54 Passed (including F-01 CTE scope collision mitigations)
 - **Connection & Resource Security (`test_connection.py`)**: 13 Passed
 - **OpenAI-Compatible Universal Backend (`test_backends_openai.py`)**: 10 Passed
 - **Anthropic Claude Backend (`test_backends_anthropic.py`)**: 7 Passed
@@ -146,6 +146,6 @@ docker compose -f docker-compose.test.yml down -v
 - **Runtime Compatibility & VRAM Estimator (`test_runtime_compatibility.py`)**: 8 Passed
 - **Dependency Hygiene & Module Boundaries (`test_dependency_hygiene.py`)**: 6 Passed
 - **Headless Streamlit UI AppTests (`test_ui_apptest.py`)**: 9 Passed (6 offline / 3 live)
-- **Enterprise UI Themes, Gateways & SQLite (`test_ui_enterprise.py`)**: 3 Passed
+- **Enterprise UI Themes, Gateways, Auth & SQLite (`test_ui_enterprise.py`)**: 4 Passed
 - **Live PostgreSQL 16 & MySQL 8.4 Integration (`test_live_integration.py`)**: 42 Passed
-- **TOTAL: 382 Automated Tests | 100% Passing Rate**
+- **TOTAL: 387 Automated Tests | 100% Passing Rate**

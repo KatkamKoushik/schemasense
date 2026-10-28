@@ -2,10 +2,53 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import pandas as pd
+
+# Pre-compiled high-performance regexes for sensitive entity detection
+PII_PATTERNS: dict[str, re.Pattern] = {
+    "EMAIL": re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"),
+    "PHONE": re.compile(
+        r"^(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}$"
+    ),
+    "CREDIT_CARD": re.compile(
+        r"^(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})$"
+    ),
+    "SSN": re.compile(r"^\d{3}-\d{2}-\d{4}$"),
+    "IP_ADDRESS": re.compile(
+        r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    ),
+}
+
+
+def detect_column_pii(sample_values: Sequence[Any]) -> tuple[str | None, float]:
+    """Inspects non-empty samples to detect sensitive PII entities (email, phone, cards, SSN, IP)."""
+    if not sample_values:
+        return None, 0.0
+
+    clean_samples = [
+        str(v).strip()
+        for v in sample_values
+        if v is not None
+        and str(v).strip()
+        and str(v).lower() not in ("none", "nan", "null")
+    ][:100]
+
+    if not clean_samples:
+        return None, 0.0
+
+    total = len(clean_samples)
+    for pii_type, regex in PII_PATTERNS.items():
+        matches = sum(1 for v in clean_samples if regex.match(v))
+        ratio = matches / total
+        if ratio >= 0.4:
+            return pii_type, round(ratio, 2)
+
+    return None, 0.0
 
 
 @dataclass
@@ -27,6 +70,10 @@ class ColumnProfile:
     outlier_count: int = 0
     # Top values
     top_values: list[tuple[str, int]] = field(default_factory=list)
+    # Sensitive Data / PII
+    pii_type: str | None = None
+    pii_match_rate: float = 0.0
+    is_sensitive: bool = False
 
 
 @dataclass
@@ -42,8 +89,39 @@ class TableQualityReport:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @property
+    def data_quality_score(self) -> float:
+        return self.overall_quality_score
 
-def profile_dataframe(df: pd.DataFrame, table_name: str) -> TableQualityReport:
+    @property
+    def duplicate_rows(self) -> int:
+        return self.duplicate_rows_count
+
+    @property
+    def duplicate_rate(self) -> float:
+        return self.duplicate_rows_percentage / 100.0
+
+    @property
+    def candidate_keys(self) -> list[str]:
+        return [c.name for c in self.columns if c.is_candidate_key]
+
+    def __getitem__(self, item: str) -> Any:
+        if item == "data_quality_score":
+            return self.overall_quality_score
+        if item == "duplicate_rows":
+            return self.duplicate_rows_count
+        if item == "duplicate_rate":
+            return self.duplicate_rows_percentage / 100.0
+        if item == "candidate_keys":
+            return self.candidate_keys
+        if item == "columns":
+            return [asdict(c) for c in self.columns]
+        return getattr(self, item)
+
+
+def profile_dataframe(
+    df: pd.DataFrame, table_name: str = "table"
+) -> TableQualityReport:
     """Profiles a pandas DataFrame calculating data quality metrics and composite quality score."""
     row_count = len(df)
     col_count = len(df.columns)
@@ -121,6 +199,10 @@ def profile_dataframe(df: pd.DataFrame, table_name: str) -> TableQualityReport:
                     outlier_cnt = len(outliers)
                     outlier_ratios.append(outlier_cnt / len(numeric_vals))
 
+        # PII Detection
+        pii_type, pii_ratio = detect_column_pii(non_null.tolist())
+        is_sensitive = pii_type is not None
+
         column_profiles.append(
             ColumnProfile(
                 name=str(col),
@@ -138,6 +220,9 @@ def profile_dataframe(df: pd.DataFrame, table_name: str) -> TableQualityReport:
                 std_value=std_v,
                 outlier_count=outlier_cnt,
                 top_values=top_vals,
+                pii_type=pii_type,
+                pii_match_rate=pii_ratio,
+                is_sensitive=is_sensitive,
             )
         )
 

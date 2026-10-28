@@ -208,6 +208,12 @@ class SchemaSenseAIAgent:
             "mistral",
             "together",
             "ollama",
+            "azure",
+            "azure_openai",
+            "bedrock",
+            "aws_bedrock",
+            "cloudflare",
+            "cloudflare_workers_ai",
             "custom",
             "openai_compat",
         ):
@@ -220,7 +226,7 @@ class SchemaSenseAIAgent:
             )
         else:
             raise ValueError(
-                f"Unsupported backend_type '{backend_type}'. Supported values are 'gemini', 'openai', 'anthropic', 'deepseek', 'groq', 'ollama', 'custom', and 'llama_cpp'."
+                f"Unsupported backend_type '{backend_type}'. Supported values are 'gemini', 'openai', 'anthropic', 'deepseek', 'groq', 'ollama', 'azure', 'bedrock', 'cloudflare', 'openrouter', 'mistral', 'custom', and 'llama_cpp'."
             )
 
     @property

@@ -51,6 +51,12 @@ PROVIDER_PRESETS: dict[str, str] = {
     "mistral": "https://api.mistral.ai/v1",
     "together": "https://api.together.xyz/v1",
     "ollama": "http://localhost:11434/v1",
+    "azure": "https://{resource}.openai.azure.com/openai/deployments/{deployment}",
+    "azure_openai": "https://{resource}.openai.azure.com/openai/deployments/{deployment}",
+    "bedrock": "http://localhost:8000/v1",
+    "aws_bedrock": "http://localhost:8000/v1",
+    "cloudflare": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
+    "cloudflare_workers_ai": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
 }
 
 KNOWN_PLACEHOLDER_KEYS = frozenset(
@@ -82,8 +88,14 @@ def is_placeholder_key(key: str | None) -> bool:
 
 def load_openai_key(provider: str = "openai") -> str | None:
     """Loads API key from environment variables or Streamlit secrets."""
+    normalized_provider = provider.upper().replace("-", "_").replace(" ", "_")
     env_vars = [
-        f"{provider.upper()}_API_KEY",
+        f"{normalized_provider}_API_KEY",
+        "AZURE_OPENAI_API_KEY",
+        "AWS_BEDROCK_API_KEY",
+        "CLOUDFLARE_API_TOKEN",
+        "OPENROUTER_API_KEY",
+        "MISTRAL_API_KEY",
         "OPENAI_API_KEY",
         "AI_GATEWAY_KEY",
         "CUSTOM_API_KEY",
@@ -184,8 +196,16 @@ class OpenAICompatBackend(InferenceBackend):
         }
         if self.api_key and not is_placeholder_key(self.api_key):
             headers["Authorization"] = f"Bearer {self.api_key}"
+            if "azure" in self.provider_name or "azure.com" in self.base_url:
+                headers["api-key"] = self.api_key
         headers.update(self.extra_headers)
         return headers
+
+    def _get_completions_url(self) -> str:
+        """Computes the target completions endpoint, normalizing Azure or pre-formed URLs."""
+        if "chat/completions" in self.base_url:
+            return self.base_url
+        return f"{self.base_url}/chat/completions"
 
     def _build_payload(
         self, request: GenerationRequest, stream: bool = False
@@ -240,7 +260,7 @@ class OpenAICompatBackend(InferenceBackend):
             )
 
         timeout = request.timeout_seconds or self.timeout_seconds
-        url = f"{self.base_url}/chat/completions"
+        url = self._get_completions_url()
         headers = self._build_headers()
         payload = self._build_payload(request, stream=False)
 
@@ -328,7 +348,7 @@ class OpenAICompatBackend(InferenceBackend):
             )
 
         timeout = request.timeout_seconds or self.timeout_seconds
-        url = f"{self.base_url}/chat/completions"
+        url = self._get_completions_url()
         headers = self._build_headers()
         payload = self._build_payload(request, stream=True)
 

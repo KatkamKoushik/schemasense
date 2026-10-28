@@ -29,11 +29,14 @@ def test_profile_dataframe_metrics():
     assert user_id_col.null_count == 0
     assert user_id_col.uniqueness_ratio == 1.0
 
-    # Test null detection
+    # Test null and PII detection
     email_col = next(c for c in report.columns if c.name == "email")
     assert email_col.null_count == 1
     assert email_col.null_percentage == 20.0
     assert email_col.is_candidate_key is False
+    assert email_col.pii_type == "EMAIL"
+    assert email_col.is_sensitive is True
+    assert email_col.pii_match_rate >= 0.75
 
     # Test outlier detection
     age_col = next(c for c in report.columns if c.name == "age")
@@ -59,3 +62,27 @@ def test_build_safe_profiling_query():
         "schema.orders", dialect="mysql", sample_size=2000
     )
     assert q_my == "SELECT * FROM `schema`.`orders` LIMIT 2000"
+
+
+def test_detect_column_pii_entities():
+    from schemasense.profiler import detect_column_pii
+
+    emails = ["alice@company.com", "bob@corp.org", "charlie@domain.io"]
+    pii_type, ratio = detect_column_pii(emails)
+    assert pii_type == "EMAIL"
+    assert ratio == 1.0
+
+    phones = ["+1-555-123-4567", "(555) 234-5678", "555-345-6789"]
+    pii_type, ratio = detect_column_pii(phones)
+    assert pii_type == "PHONE"
+    assert ratio == 1.0
+
+    ips = ["192.168.1.1", "10.0.0.1", "172.16.254.1"]
+    pii_type, ratio = detect_column_pii(ips)
+    assert pii_type == "IP_ADDRESS"
+    assert ratio == 1.0
+
+    safe_text = ["ORD-001", "ORD-002", "ORD-003", "DELIVERED"]
+    pii_type, ratio = detect_column_pii(safe_text)
+    assert pii_type is None
+    assert ratio == 0.0

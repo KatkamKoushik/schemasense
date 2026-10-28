@@ -159,3 +159,42 @@ def test_create_safe_engine_password_masking():
     assert secret not in err_str, (
         "Password must NOT be leaked in cleartext error message"
     )
+
+
+def test_build_safe_url_cloud_ssl_parameters():
+    """Verifies that cloud SSL/TLS parameters are safely injected for AWS RDS, Azure, and Cloud SQL."""
+    # PostgreSQL with SSL require
+    url_pg_ssl = build_safe_url(
+        "PostgreSQL",
+        "mydb.rds.amazonaws.com",
+        5432,
+        "proddb",
+        "app_user",
+        "p@ss",
+        ssl_mode="require",
+    )
+    assert url_pg_ssl.query["sslmode"] == "require"
+
+    # PostgreSQL with SSL verify-ca
+    url_pg_ca = build_safe_url(
+        "PostgreSQL",
+        "myazure.postgres.database.azure.com",
+        5432,
+        "proddb",
+        "app_user",
+        "p@ss",
+        ssl_mode="verify-ca",
+    )
+    assert url_pg_ca.query["sslmode"] == "verify-ca"
+
+    # PostgreSQL with SSL disable
+    url_pg_none = build_safe_url(
+        "PostgreSQL",
+        "127.0.0.1",
+        5432,
+        "localdb",
+        "app_user",
+        "p@ss",
+        ssl_mode="disable",
+    )
+    assert "sslmode" not in url_pg_none.query

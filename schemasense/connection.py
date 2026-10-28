@@ -238,6 +238,7 @@ def build_safe_url(
     db_name: str = "",
     user: str = "",
     password: str = "",
+    ssl_mode: str = "prefer",
 ) -> URL:
     """Build a safe SQLAlchemy URL object without raw string concatenation."""
     if db_type not in SUPPORTED_DIALECTS:
@@ -271,6 +272,9 @@ def build_safe_url(
     query_params = {}
     if db_type == "MySQL":
         query_params["charset"] = "utf8mb4"
+    if ssl_mode and ssl_mode.lower() not in ("disable", "none", "off"):
+        if db_type == "PostgreSQL":
+            query_params["sslmode"] = ssl_mode.lower()
 
     return URL.create(
         drivername=driver,
@@ -292,6 +296,7 @@ def create_safe_engine(
     password: str = "",
     connect_timeout: int = 10,
     enforce_least_privilege: bool = False,
+    ssl_mode: str = "prefer",
 ) -> Engine:
     """
     Creates a configured SQLAlchemy Engine with bounded connection pool and connection validation.
@@ -305,8 +310,11 @@ def create_safe_engine(
         password: Password
         connect_timeout: Network connect timeout in seconds
         enforce_least_privilege: If True, rejects privileged accounts with PrivilegedAccountError
+        ssl_mode: SSL encryption mode for cloud databases (AWS RDS, Azure, GCP Cloud SQL, Supabase)
     """
-    url = build_safe_url(db_type, host, port, db_name, user, password)
+    url = build_safe_url(
+        db_type, host, port, db_name, user, password, ssl_mode=ssl_mode
+    )
 
     connect_args = {}
     if db_type in ("PostgreSQL", "MySQL"):
@@ -318,6 +326,14 @@ def create_safe_engine(
                 "write_timeout": connect_timeout * 3,
             }
         )
+        if ssl_mode and ssl_mode.lower() not in ("disable", "none", "off"):
+            mode_upper = ssl_mode.upper()
+            if mode_upper in ("REQUIRE", "REQUIRED"):
+                connect_args["ssl"] = {"ssl_mode": "REQUIRED"}
+            elif mode_upper in ("VERIFY-CA", "VERIFY_CA"):
+                connect_args["ssl"] = {"ssl_mode": "VERIFY_CA"}
+            elif mode_upper in ("VERIFY-FULL", "VERIFY_IDENTITY"):
+                connect_args["ssl"] = {"ssl_mode": "VERIFY_IDENTITY"}
 
     # Bounded pool parameters for networked databases
     pool_kwargs = {

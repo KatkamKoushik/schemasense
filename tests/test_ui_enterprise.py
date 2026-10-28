@@ -149,3 +149,36 @@ def test_ui_sqlite_connection_and_diff():
         if at is not None and at.session_state.get("db_engine") is not None:
             dispose_engine(at.session_state.db_engine)
         Path(db_path).unlink(missing_ok=True)
+
+
+def test_ui_enterprise_auth_gate_locking_and_unlocking(monkeypatch):
+    """Verifies that setting SCHEMASENSE_ACCESS_KEY engages the auth gate until unlocked."""
+    monkeypatch.setenv("SCHEMASENSE_ACCESS_KEY", "super-secret-enterprise-token")
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    at.run()
+    assert not at.exception
+
+    # In locked mode, the gate card and password input are present
+    assert any("Enterprise Security Key" in t.label for t in at.text_input)
+    # The normal sidebar database engine selection is NOT rendered
+    assert not any("Database Engine" in s.label for s in at.sidebar.selectbox)
+
+    # Attempt wrong password
+    auth_input = next(t for t in at.text_input if "Enterprise Security Key" in t.label)
+    auth_input.input("wrong-password")
+    submit_btn = next(b for b in at.button if "Verify & Enter Console" in b.label)
+    submit_btn.click()
+    at.run()
+    assert any("Access Denied" in e.value for e in at.error)
+
+    # Supply correct token
+    auth_input = next(t for t in at.text_input if "Enterprise Security Key" in t.label)
+    auth_input.input("super-secret-enterprise-token")
+    submit_btn = next(b for b in at.button if "Verify & Enter Console" in b.label)
+    submit_btn.click()
+    at.run()
+    assert not at.exception
+    assert at.session_state.authenticated is True
+    # Now the console is unlocked and sidebar is available
+    assert any("Database Engine" in s.label for s in at.sidebar.selectbox)

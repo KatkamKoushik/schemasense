@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -146,6 +147,69 @@ THEMES = {
         "card_bg": "#0F2644",
         "chip_bg": "rgba(17, 34, 64, 0.85)",
     },
+    "Pure White (Minimal)": {
+        "name": "Pure White (Minimal)",
+        "bg_canvas": "#FFFFFF",
+        "bg_surface": "#F8FAFC",
+        "bg_panel": "#F1F5F9",
+        "border_subtle": "rgba(15, 23, 42, 0.12)",
+        "border_active": "rgba(2, 132, 199, 0.5)",
+        "accent_cyan": "#0284C7",
+        "accent_cyan_hover": "#0369A1",
+        "accent_violet": "#7C3AED",
+        "accent_emerald": "#059669",
+        "accent_amber": "#D97706",
+        "accent_rose": "#E11D48",
+        "text_primary": "#0F172A",
+        "text_secondary": "#334155",
+        "text_muted": "#64748B",
+        "header_bg": "linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%)",
+        "sidebar_bg": "#FAFAFA",
+        "card_bg": "#FFFFFF",
+        "chip_bg": "#F1F5F9",
+    },
+    "Midnight Charcoal (OLED)": {
+        "name": "Midnight Charcoal (OLED)",
+        "bg_canvas": "#000000",
+        "bg_surface": "#0C0C0E",
+        "bg_panel": "#141416",
+        "border_subtle": "rgba(255, 255, 255, 0.12)",
+        "border_active": "rgba(56, 189, 248, 0.4)",
+        "accent_cyan": "#38BDF8",
+        "accent_cyan_hover": "#0EA5E9",
+        "accent_violet": "#A78BFA",
+        "accent_emerald": "#10B981",
+        "accent_amber": "#F59E0B",
+        "accent_rose": "#F43F5E",
+        "text_primary": "#FFFFFF",
+        "text_secondary": "#A1A1AA",
+        "text_muted": "#71717A",
+        "header_bg": "linear-gradient(180deg, #111113 0%, #000000 100%)",
+        "sidebar_bg": "#050505",
+        "card_bg": "#0B0B0D",
+        "chip_bg": "rgba(20, 20, 22, 0.9)",
+    },
+    "Nordic Slate": {
+        "name": "Nordic Slate",
+        "bg_canvas": "#2E3440",
+        "bg_surface": "#3B4252",
+        "bg_panel": "#434C5E",
+        "border_subtle": "rgba(236, 239, 244, 0.15)",
+        "border_active": "rgba(136, 192, 208, 0.5)",
+        "accent_cyan": "#88C0D0",
+        "accent_cyan_hover": "#81A1C1",
+        "accent_violet": "#B48EAD",
+        "accent_emerald": "#A3BE8C",
+        "accent_amber": "#EBCB8B",
+        "accent_rose": "#BF616A",
+        "text_primary": "#ECEFF4",
+        "text_secondary": "#D8DEE9",
+        "text_muted": "#E5E9F0",
+        "header_bg": "linear-gradient(180deg, #3B4252 0%, #2E3440 100%)",
+        "sidebar_bg": "#242933",
+        "card_bg": "#353C4A",
+        "chip_bg": "rgba(67, 76, 94, 0.85)",
+    },
 }
 
 if "app_theme" not in st.session_state:
@@ -192,9 +256,35 @@ code, kbd, samp, pre, .stCodeBlock, [data-testid="stCode"] {{
     color: var(--text-primary) !important;
 }}
 
+/* Force high-contrast theme typography across light, white, gray, and dark modes */
+body, [data-testid="stAppViewContainer"] p,
+[data-testid="stAppViewContainer"] span:not(.live-dot):not(.status-dot):not(.chip-badge),
+[data-testid="stAppViewContainer"] label,
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stWidgetLabel"] label,
+[data-testid="stWidgetLabel"] p,
+.stMarkdown,
+[data-testid="stExpander"] {{
+    color: var(--text-primary) !important;
+}}
+
+[data-baseweb="select"] * {{
+    color: var(--text-primary) !important;
+    background-color: var(--bg-surface) !important;
+}}
+
+div[data-baseweb="popover"], div[data-baseweb="popover"] * {{
+    background-color: var(--bg-surface) !important;
+    color: var(--text-primary) !important;
+}}
+
 [data-testid="stSidebar"] {{
     background-color: {curr_theme["sidebar_bg"]} !important;
     border-right: 1px solid var(--border-subtle) !important;
+}}
+
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] span:not(.status-dot):not(.live-dot), [data-testid="stSidebar"] label {{
+    color: var(--text-primary) !important;
 }}
 
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{
@@ -548,6 +638,97 @@ if "selected_tables" not in st.session_state:
 if "schema_snapshots" not in st.session_state:
     st.session_state.schema_snapshots = {}
 
+
+# ──────────────────────────────────────────────
+# ENTERPRISE ACCESS CONTROL & AUTHENTICATION
+# ──────────────────────────────────────────────
+def resolve_enterprise_identity() -> tuple[bool, str, str]:
+    """Inspects reverse-proxy headers (OIDC, Cloudflare, ALB) or environment access key."""
+    # 1. Reverse-proxy / Identity-Aware Proxy (IAP) headers
+    headers = {}
+    if hasattr(st, "context") and hasattr(st.context, "headers"):
+        headers = st.context.headers or {}
+
+    for h_name in (
+        "x-forwarded-user",
+        "cf-access-authenticated-user-email",
+        "x-auth-request-email",
+        "x-remote-user",
+    ):
+        if h_val := headers.get(h_name):
+            return True, h_val, "Trusted OIDC / Reverse Proxy"
+
+    # 2. Configured enterprise access key / token
+    configured_key = os.getenv("SCHEMASENSE_ACCESS_KEY") or os.getenv(
+        "SCHEMASENSE_AUTH_KEY"
+    )
+    if not configured_key and hasattr(st, "secrets"):
+        try:
+            configured_key = st.secrets.get("auth", {}).get("access_token", "")
+        except Exception:  # noqa: BLE001
+            configured_key = ""
+
+    configured_key = (configured_key or "").strip()
+
+    # If no key configured, running in local evaluation / demo mode
+    if not configured_key:
+        return True, "Local Operator", "Evaluation Mode (Local)"
+
+    # If key is required, check session state
+    if st.session_state.get("authenticated", False):
+        user = st.session_state.get("auth_user", "Authorized Operator")
+        return True, user, "Security Access Token"
+
+    return False, "", "Token Gated"
+
+
+is_auth, auth_user, auth_mech = resolve_enterprise_identity()
+if not is_auth:
+    st.markdown(
+        """
+        <div style="max-width: 540px; margin: 3rem auto; padding: 2rem; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
+            <div style="font-size: 1.3rem; font-weight: 800; color: var(--text-primary); margin-bottom: 0.25rem;">
+                SchemaSense Enterprise Console
+            </div>
+            <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
+                This database intelligence console is protected by an enterprise access gate. Enter your security key or sign in via your identity provider.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    col_a1, col_a2, col_a3 = st.columns([1, 2, 1])
+    with col_a2:
+        with st.form("auth_gate_form"):
+            entered_key = st.text_input(
+                "Enterprise Security Key",
+                type="password",
+                placeholder="Enter access token",
+            )
+            submit_auth = st.form_submit_button(
+                "Verify & Enter Console", use_container_width=True
+            )
+            if submit_auth:
+                expected = os.getenv("SCHEMASENSE_ACCESS_KEY") or os.getenv(
+                    "SCHEMASENSE_AUTH_KEY"
+                )
+                if not expected and hasattr(st, "secrets"):
+                    try:
+                        expected = st.secrets.get("auth", {}).get("access_token", "")
+                    except Exception:  # noqa: BLE001
+                        expected = ""
+                if entered_key and entered_key.strip() == (expected or "").strip():
+                    st.session_state.authenticated = True
+                    st.session_state.auth_user = "Authorized Operator"
+                    st.session_state.auth_method = "Security Access Token"
+                    st.rerun()
+                else:
+                    st.error("Access Denied: Invalid Security Key.")
+    st.stop()
+
+st.session_state.auth_user = auth_user
+st.session_state.auth_method = auth_mech
+
 # ──────────────────────────────────────────────
 # SIDEBAR: CONNECTION GATEWAY & SETTINGS
 # ──────────────────────────────────────────────
@@ -596,9 +777,14 @@ with st.sidebar:
         [
             "Google Gemini (Cloud)",
             "OpenAI",
+            "Microsoft Azure OpenAI",
+            "AWS Bedrock (via Gateway)",
+            "Cloudflare Workers AI",
             "Anthropic Claude",
             "DeepSeek",
             "Groq (Cloud)",
+            "OpenRouter (Multi-Model)",
+            "Mistral AI",
             "Ollama (Local Server)",
             "Custom OpenAI-Compatible Gateway",
             "llama.cpp (Local GGUF)",
@@ -664,6 +850,162 @@ with st.sidebar:
             placeholder="sk-proj-...",
             key="openai_key_input",
         )
+        if custom_key.strip():
+            st.session_state.custom_api_key = custom_key.strip()
+
+    elif backend_mode_choice == "Microsoft Azure OpenAI":
+        active_backend_key = "azure_openai"
+        st.markdown(
+            '<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.4rem;">'
+            "Provider: <strong style='color:var(--accent-cyan);'>Microsoft Azure OpenAI Service</strong>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        azure_url = st.text_input(
+            "Azure Endpoint / Deployment URL",
+            value=st.session_state.get("custom_base_url", ""),
+            placeholder="https://<resource>.openai.azure.com/openai/deployments/<model>",
+            key="azure_endpoint_input",
+            help="Full Azure deployment URL or base endpoint. Header 'api-key' is automatically forwarded.",
+        )
+        selected_model = st.text_input(
+            "Deployment Name",
+            value="gpt-4o",
+            placeholder="e.g. gpt-4o, gpt-4-turbo",
+            key="azure_model_input",
+        )
+        custom_key = st.text_input(
+            "Azure API Key",
+            type="password",
+            placeholder="Enter Azure OpenAI key",
+            key="azure_key_input",
+        )
+        if azure_url.strip():
+            st.session_state.custom_base_url = azure_url.strip()
+        if custom_key.strip():
+            st.session_state.custom_api_key = custom_key.strip()
+
+    elif backend_mode_choice == "AWS Bedrock (via Gateway)":
+        active_backend_key = "aws_bedrock"
+        st.markdown(
+            '<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.4rem;">'
+            "Provider: <strong style='color:var(--accent-amber);'>Amazon Bedrock (OpenAI Gateway / LiteLLM)</strong>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        bedrock_url = st.text_input(
+            "Bedrock Gateway Base URL",
+            value=st.session_state.get("custom_base_url") or "http://localhost:8000/v1",
+            placeholder="http://localhost:8000/v1 or https://bedrock.proxy/v1",
+            key="bedrock_url_input",
+        )
+        selected_model = st.selectbox(
+            "Bedrock Model Identifier",
+            [
+                "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                "amazon.nova-pro-v1:0",
+                "meta.llama3-3-70b-instruct-v1:0",
+                "amazon.titan-text-express-v1",
+            ],
+            key="bedrock_model_select",
+            label_visibility="collapsed",
+        )
+        custom_key = st.text_input(
+            "Bedrock Gateway Token (Optional)",
+            type="password",
+            placeholder="Bearer token if proxy authenticated",
+            key="bedrock_key_input",
+        )
+        if bedrock_url.strip():
+            st.session_state.custom_base_url = bedrock_url.strip()
+        if custom_key.strip():
+            st.session_state.custom_api_key = custom_key.strip()
+
+    elif backend_mode_choice == "Cloudflare Workers AI":
+        active_backend_key = "cloudflare_workers_ai"
+        st.markdown(
+            '<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.4rem;">'
+            "Provider: <strong style='color:var(--accent-amber);'>Cloudflare Workers AI</strong>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        cf_account = st.text_input(
+            "Cloudflare Account ID",
+            placeholder="e.g. 96b867c4e512419a...",
+            key="cf_account_input",
+        )
+        selected_model = st.selectbox(
+            "Cloudflare Model",
+            [
+                "@cf/meta/llama-3.3-70b-instruct",
+                "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+                "@cf/mistral/mistral-7b-instruct-v0.2",
+            ],
+            key="cf_model_select",
+            label_visibility="collapsed",
+        )
+        custom_key = st.text_input(
+            "Cloudflare API Token",
+            type="password",
+            placeholder="Bearer token with Workers AI permissions",
+            key="cf_token_input",
+        )
+        if cf_account.strip():
+            st.session_state.custom_base_url = f"https://api.cloudflare.com/client/v4/accounts/{cf_account.strip()}/ai/v1"
+        if custom_key.strip():
+            st.session_state.custom_api_key = custom_key.strip()
+
+    elif backend_mode_choice == "OpenRouter (Multi-Model)":
+        active_backend_key = "openrouter"
+        st.markdown(
+            '<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.4rem;">'
+            "Provider: <strong style='color:var(--accent-cyan);'>OpenRouter Gateway (200+ Models)</strong>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        selected_model = st.selectbox(
+            "OpenRouter Model",
+            [
+                "anthropic/claude-3.5-sonnet",
+                "openai/gpt-4o",
+                "deepseek/deepseek-r1",
+                "meta-llama/llama-3.3-70b-instruct",
+                "mistralai/codestral-2501",
+            ],
+            key="openrouter_model_select",
+            label_visibility="collapsed",
+        )
+        custom_key = st.text_input(
+            "OpenRouter API Key",
+            type="password",
+            placeholder="sk-or-v1-...",
+            key="openrouter_key_input",
+        )
+        st.session_state.custom_base_url = "https://openrouter.ai/api/v1"
+        if custom_key.strip():
+            st.session_state.custom_api_key = custom_key.strip()
+
+    elif backend_mode_choice == "Mistral AI":
+        active_backend_key = "mistral"
+        st.markdown(
+            '<div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.4rem;">'
+            "Provider: <strong style='color:var(--accent-amber);'>Mistral AI Official API</strong>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        selected_model = st.selectbox(
+            "Mistral Model",
+            ["codestral-latest", "mistral-large-latest", "mistral-small-latest"],
+            key="mistral_model_select",
+            label_visibility="collapsed",
+        )
+        custom_key = st.text_input(
+            "Mistral API Key",
+            type="password",
+            placeholder="Enter Mistral API Key",
+            key="mistral_key_input",
+        )
+        st.session_state.custom_base_url = "https://api.mistral.ai/v1"
         if custom_key.strip():
             st.session_state.custom_api_key = custom_key.strip()
 
@@ -901,14 +1243,34 @@ with st.sidebar:
             # Retain dummy values for variable binding
             db_host, db_port, db_name, db_user, db_pass = "", "", db_sqlite_file, "", ""
             enforce_least_priv = False
+            active_ssl_mode = "disable"
         else:
-            db_host = st.text_input("Host URL / IP", placeholder="e.g. 127.0.0.1")
+            db_host = st.text_input(
+                "Host URL / IP", placeholder="e.g. 127.0.0.1 or mydb.rds.amazonaws.com"
+            )
             db_port = st.text_input(
                 "Port", value="5432" if db_engine_choice == "PostgreSQL" else "3306"
             )
             db_name = st.text_input("Database Name", placeholder="database_name")
             db_user = st.text_input("Username", placeholder="username")
             db_pass = st.text_input("Password", type="password")
+            db_ssl_choice = st.selectbox(
+                "Cloud SSL / TLS Mode",
+                [
+                    "Default (prefer)",
+                    "Require SSL (Cloud DB: AWS RDS / Azure / Supabase)",
+                    "Verify CA (verify-ca)",
+                    "Disable SSL (disable)",
+                ],
+                help="Select 'Require SSL' for cloud-managed databases on AWS RDS, Azure Database, Google Cloud SQL, or Supabase.",
+            )
+            ssl_map = {
+                "Default (prefer)": "prefer",
+                "Require SSL (Cloud DB: AWS RDS / Azure / Supabase)": "require",
+                "Verify CA (verify-ca)": "verify-ca",
+                "Disable SSL (disable)": "disable",
+            }
+            active_ssl_mode = ssl_map.get(db_ssl_choice, "prefer")
             enforce_least_priv = st.checkbox(
                 "Enforce Least-Privilege Role",
                 value=False,
@@ -944,6 +1306,7 @@ with st.sidebar:
                             user=db_user,
                             password=db_pass,
                             enforce_least_privilege=enforce_least_priv,
+                            ssl_mode=active_ssl_mode,
                         )
 
                     schema_obj = inspect_database_schema(engine)
@@ -1066,6 +1429,27 @@ with st.sidebar:
                     st.session_state.business_rules = []
                     st.rerun()
 
+        st.markdown(
+            "<div style=\"font-family:'JetBrains Mono',monospace; font-size:0.68rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.06em; margin-top:0.6rem; margin-bottom:0.1rem;\">Security & Access Gate</div>",
+            unsafe_allow_html=True,
+        )
+        with st.expander("Session Identity", expanded=False):
+            st.markdown(
+                f"""
+                <div style="font-size:0.75rem; color:var(--text-secondary);">
+                    <div><strong>Operator:</strong> {st.session_state.auth_user}</div>
+                    <div><strong>Gateway:</strong> {st.session_state.auth_method}</div>
+                    <div style="margin-top:6px; font-size:0.7rem; color:var(--text-muted);">
+                        Protected by trusted reverse-proxy headers or token gate. See docs/security/access-control.md.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Lock Console Session", use_container_width=True):
+                st.session_state.authenticated = False
+                st.rerun()
+
 # ──────────────────────────────────────────────
 # MAIN NAVIGATION TABS
 # ──────────────────────────────────────────────
@@ -1107,6 +1491,7 @@ provider_badge_html = f'<div class="console-badge badge-cyan"><span>{active_back
 theme_badge_html = (
     f'<div class="console-badge"><span>Theme: {st.session_state.app_theme}</span></div>'
 )
+auth_badge_html = f'<div class="console-badge badge-connected"><span>Operator: {st.session_state.auth_user}</span></div>'
 
 # CONSOLE HEADER
 st.markdown(
@@ -1123,6 +1508,7 @@ st.markdown(
             {pool_badge_html}
             {provider_badge_html}
             {theme_badge_html}
+            {auth_badge_html}
         </div>
     </div>
     """,
@@ -1154,29 +1540,34 @@ with tab_chat:
         else "Disconnected"
     )
 
-    if is_connected and st.session_state.db_schema:
-        st.markdown(
-            f"""
-            <div class="telemetry-strip">
-                <span>Database: <strong>{st.session_state.db_schema.database_name}</strong> ({st.session_state.db_type})</span>
-                <span>Active Schema Context: <strong>{active_tables_count} tables</strong></span>
-                <span>Business Constraints: <strong>{active_rules_count} rules active</strong></span>
-                <span>Inference: <strong>{engine_badge}</strong></span>
+    dot_color = "var(--accent-emerald)" if is_connected else "var(--text-muted)"
+    status_label = (
+        f"<span>Catalog: <strong>{db_name_display}</strong></span>"
+        if is_connected
+        else "<span>Operating Mode: <strong>General SQL guidance</strong></span>"
+    )
+    st.markdown(
+        f"""
+        <div class="gateway-live-bar">
+            <div class="gateway-chip">
+                <span class="live-dot" style="background-color:{dot_color}; color:{dot_color};"></span>
+                {status_label}
+                <span class="chip-badge">{st.session_state.db_type or "Offline"}</span>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f"""
-            <div class="telemetry-strip">
-                <span>Status: <strong>Database disconnected</strong></span>
-                <span>Operating Mode: <strong>General SQL guidance</strong></span>
-                <span>Inference: <strong>{engine_badge}</strong></span>
+            <div class="gateway-chip">
+                <span>Scope: <strong>{active_tables_count}</strong> tables</span>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            <div class="gateway-chip">
+                <span>Rules: <strong>{active_rules_count}</strong> active</span>
+            </div>
+            <div class="gateway-chip" style="margin-left:auto;">
+                <span class="chip-badge" style="color:var(--accent-cyan); background:rgba(56, 189, 248, 0.12);">{active_backend_key.title()}</span>
+                <span>Model: <strong>{selected_model}</strong></span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col_mode, col_clear = st.columns([3, 1])
     with col_mode:
@@ -1359,10 +1750,10 @@ with tab_schema:
             unsafe_allow_html=True,
         )
 
-        col_exp1, col_exp2 = st.columns(2)
+        col_exp1, col_exp2, col_exp3, col_exp4 = st.columns(4)
         with col_exp1:
             st.download_button(
-                label="Download Data Dictionary (JSON)",
+                label="Download JSON",
                 data=schema.to_json(),
                 file_name=f"{schema.database_name}_data_dictionary.json",
                 mime="application/json",
@@ -1370,10 +1761,26 @@ with tab_schema:
             )
         with col_exp2:
             st.download_button(
-                label="Download Data Dictionary (Markdown)",
+                label="Download Markdown",
                 data=schema.to_markdown(),
                 file_name=f"{schema.database_name}_data_dictionary.md",
                 mime="text/markdown",
+                use_container_width=True,
+            )
+        with col_exp3:
+            st.download_button(
+                label="Export DBML (dbdocs)",
+                data=schema.to_dbml(),
+                file_name=f"{schema.database_name}.dbml",
+                mime="text/plain",
+                use_container_width=True,
+            )
+        with col_exp4:
+            st.download_button(
+                label="Export SQL DDL",
+                data=schema.to_ddl(),
+                file_name=f"{schema.database_name}_ddl.sql",
+                mime="text/plain",
                 use_container_width=True,
             )
 
@@ -1465,7 +1872,7 @@ with tab_profiler:
             ):
                 try:
                     prof_sql = build_safe_profiling_query(
-                        selected_prof_table, limit=sample_size
+                        selected_prof_table, sample_size=sample_size
                     )
                     sample_df, _ = execute_safe_query(
                         engine=st.session_state.db_engine,
@@ -1479,7 +1886,7 @@ with tab_profiler:
                     if sample_df.empty:
                         st.warning(f"Table '{selected_prof_table}' contains no rows.")
                     else:
-                        profile_res = profile_dataframe(sample_df)
+                        profile_res = profile_dataframe(sample_df, selected_prof_table)
                         dq_score = profile_res["data_quality_score"]
 
                         c1, c2, c3, c4 = st.columns(4)

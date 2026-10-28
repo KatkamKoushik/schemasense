@@ -47,6 +47,16 @@ def test_schema_exports(sqlite_engine):
     assert "Table: customers" in prompt_ctx
     assert "Table: secret_passwords" in prompt_ctx
 
+    # Test DBML export
+    dbml_out = schema.to_dbml()
+    assert "Table customers {" in dbml_out
+    assert "Ref: orders.customer_id > customers.id" in dbml_out
+
+    # Test DDL export
+    ddl_out = schema.to_ddl()
+    assert "CREATE TABLE customers (" in ddl_out
+    assert "PRIMARY KEY (id)" in ddl_out
+
     # Test Selective Disclosure Filter
     filtered_ctx = schema.to_prompt_context(table_filter=["customers"])
     assert "Table: customers" in filtered_ctx

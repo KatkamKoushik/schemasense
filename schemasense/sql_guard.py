@@ -13,6 +13,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlglot import exp
 from sqlglot.errors import ParseError
+from sqlglot.optimizer.scope import traverse_scope
 
 from schemasense.connection import ConcurrencyLimitExceeded, acquire_query_budget
 
@@ -212,41 +213,67 @@ class SQLGuard:
                     error_message=f"Disallowed administrative function '{func_name}' is not permitted.",
                 )
 
-        # 6. Extract CTE definitions so their aliases are not mistaken for external tables
-        cte_aliases = set()
-        for cte in root.find_all(exp.CTE):
-            alias = cte.alias_or_name
-            if alias:
-                cte_aliases.add(alias.lower())
+        # 6. Scope-aware extraction of real physical tables vs CTE / subquery aliases
+        extracted_tables: list[str] = []
+        try:
+            for scope in traverse_scope(root):
+                for source in scope.sources.values():
+                    if isinstance(source, exp.Table):
+                        t_name = source.name
+                        if not t_name:
+                            continue
+                        schema_part = source.db
+                        full_name = f"{schema_part}.{t_name}" if schema_part else t_name
+                        if full_name not in extracted_tables:
+                            extracted_tables.append(full_name)
+        except Exception as scope_exc:  # noqa: BLE001
+            logger.debug("Scope traversal fallback engaged: %s", scope_exc)
+            # Fallback direct AST traversal:
+            # In SQL, CTEs cannot have schema qualifiers. A schema-qualified table is NEVER a CTE!
+            cte_aliases = {
+                cte.alias_or_name.lower()
+                for cte in root.find_all(exp.CTE)
+                if cte.alias_or_name
+            }
+            for table_node in root.find_all(exp.Table):
+                t_name = table_node.name
+                if not t_name:
+                    continue
+                schema_part = table_node.db
+                # Only unqualified names matching a CTE alias can be CTE references
+                if not schema_part and t_name.lower() in cte_aliases:
+                    continue
+                full_name = f"{schema_part}.{t_name}" if schema_part else t_name
+                if full_name not in extracted_tables:
+                    extracted_tables.append(full_name)
 
-        # 7. Extract real database table references
-        extracted_tables = []
-        for table_node in root.find_all(exp.Table):
-            t_name = table_node.name
-            if not t_name:
-                continue
-            # If the table reference is a CTE alias, skip allowlist check
-            if t_name.lower() in cte_aliases:
-                continue
+        # 7. Block unauthorized system catalog schemas and tables
+        for ext_table in extracted_tables:
+            parts = ext_table.lower().split(".")
+            schema_part = parts[0] if len(parts) > 1 else None
+            bare_table = parts[-1]
 
-            schema_part = table_node.db
-            full_name = f"{schema_part}.{t_name}" if schema_part else t_name
-            extracted_tables.append(full_name)
-
-            # Block unauthorized system catalog schemas
-            if schema_part:
-                schema_lower = schema_part.lower()
-                if schema_lower in SYSTEM_SCHEMAS:
-                    # Only allow if explicitly allowed in allowed_tables
-                    allowed_full = (
-                        {t.lower() for t in allowed_tables} if allowed_tables else set()
+            if schema_part and schema_part in SYSTEM_SCHEMAS:
+                allowed_full = (
+                    {t.lower() for t in allowed_tables} if allowed_tables else set()
+                )
+                if ext_table.lower() not in allowed_full:
+                    return ValidationResult(
+                        is_valid=False,
+                        error_message=f"Access to protected system schema '{schema_part}' is strictly forbidden.",
+                        extracted_tables=extracted_tables,
                     )
-                    if full_name.lower() not in allowed_full:
-                        return ValidationResult(
-                            is_valid=False,
-                            error_message=f"Access to protected system schema '{schema_part}' is strictly forbidden.",
-                            extracted_tables=extracted_tables,
-                        )
+
+            if bare_table in SYSTEM_SCHEMAS:
+                allowed_full = (
+                    {t.lower() for t in allowed_tables} if allowed_tables else set()
+                )
+                if ext_table.lower() not in allowed_full:
+                    return ValidationResult(
+                        is_valid=False,
+                        error_message=f"Access to protected system catalog '{bare_table}' is strictly forbidden.",
+                        extracted_tables=extracted_tables,
+                    )
 
         # 8. Check against allowed tables if an allowlist is provided
         if allowed_tables is not None:

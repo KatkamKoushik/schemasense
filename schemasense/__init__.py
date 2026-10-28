@@ -28,4 +28,7 @@ __all__ = [
     "extract_sql_from_text",
     "get_session_agent",
     "verify_schema_fidelity",
+    "auth",
 ]
+
+from schemasense import auth

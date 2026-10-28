@@ -87,6 +87,43 @@ class TestAgentBackendSelectionConstruction:
         assert agent.backend_info.is_local is True
         assert agent.model_path == model_file
 
+    def test_explicit_openai_and_anthropic_backend_types(self):
+        """Explicitly requesting 'openai' and 'anthropic' initializes their respective adapters."""
+        agent_o = SchemaSenseAIAgent(
+            backend_type="openai", api_key="sk-test", model_name="gpt-4o"
+        )
+        assert agent_o.backend_type == "openai"
+        assert agent_o.is_local is False
+        assert agent_o.backend_info.backend_id == "openai-gpt-4o"
+
+        agent_a = SchemaSenseAIAgent(
+            backend_type="anthropic",
+            api_key="sk-ant-test",
+            model_name="claude-3-5-sonnet",
+        )
+        assert agent_a.backend_type == "anthropic"
+        assert agent_a.is_local is False
+        assert agent_a.backend_info.backend_id == "anthropic-claude-3-5-sonnet"
+
+        agent_ol = SchemaSenseAIAgent(backend_type="ollama", model_name="llama3.2")
+        assert agent_ol.backend_type == "ollama"
+        assert agent_ol.is_local is True
+
+        agent_az = SchemaSenseAIAgent(
+            backend_type="azure_openai", api_key="sk-az", model_name="gpt-4o"
+        )
+        assert agent_az.backend_type == "azure_openai"
+
+        agent_bed = SchemaSenseAIAgent(
+            backend_type="aws_bedrock", api_key="sk-bed", model_name="nova"
+        )
+        assert agent_bed.backend_type == "aws_bedrock"
+
+        agent_cf = SchemaSenseAIAgent(
+            backend_type="cloudflare_workers_ai", api_key="sk-cf", model_name="llama"
+        )
+        assert agent_cf.backend_type == "cloudflare_workers_ai"
+
     def test_backend_type_aliases_normalize_correctly(self, tmp_path):
         """Aliases 'cloud' and 'local' map cleanly to gemini and llama_cpp."""
         agent_cloud = SchemaSenseAIAgent(
@@ -468,9 +505,9 @@ class TestStreamlitAppTestUIBackendSwitching:
         assert len(text_inputs) >= 6
         assert "Gemini API Key" in text_inputs[0].label
 
-        # Telemetry strip reflects Cloud Gemini
+        # Live gateway bar reflects Cloud Gemini
         chat_markdowns = [m.value for m in at.markdown]
-        assert any("Inference: <strong>Cloud (Gemini" in val for val in chat_markdowns)
+        assert any("Gemini" in val for val in chat_markdowns)
 
     def test_switch_to_local_backend_renders_model_path_input(self):
         at = AppTest.from_file(APP_PATH, default_timeout=20)
@@ -488,11 +525,9 @@ class TestStreamlitAppTestUIBackendSwitching:
         text_inputs = list(at.sidebar.text_input)
         assert "Local GGUF Model Path" in text_inputs[0].label
 
-        # Verify chat telemetry strip reflects local inference
+        # Verify chat live bar reflects local inference
         chat_markdowns = [m.value for m in at.markdown]
-        assert any(
-            "Inference: <strong>Local (llama.cpp" in val for val in chat_markdowns
-        )
+        assert any("Llama_Cpp" in val or "llama.cpp" in val for val in chat_markdowns)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

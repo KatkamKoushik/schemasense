@@ -146,6 +146,105 @@ def test_schema_spoofing_prevented():
 
 
 # ─────────────────────────────────────────────────────────────
+# 3b. CTE ALIAS COLLISION REGRESSION TESTS (F-01 MITIGATION)
+# ─────────────────────────────────────────────────────────────
+
+
+def test_cte_alias_collision_unauthorized_schema_qualified_table_rejected(
+    sqlite_engine,
+):
+    """F-01 Regression: Qualified table must not be skipped if unqualified name matches a CTE alias."""
+    allowed_tables = {"customers"}
+    query = """
+    WITH customers AS (SELECT 1 AS id)
+    SELECT * FROM secret_schema.customers;
+    """
+    res = SQLGuard.validate(query, dialect="postgres", allowed_tables=allowed_tables)
+    assert not res.is_valid
+    assert "secret_schema.customers" in res.extracted_tables
+    assert (
+        "unauthorized schema-qualified" in res.error_message.lower()
+        or "prohibited" in res.error_message.lower()
+    )
+
+    with pytest.raises(SQLSecurityViolation) as exc_info:
+        execute_safe_query(
+            sqlite_engine,
+            query,
+            allowed_tables=allowed_tables,
+            dialect="postgres",
+        )
+    assert "secret_schema.customers" in str(exc_info.value)
+
+
+def test_cte_alias_collision_protected_system_schema_rejected(sqlite_engine):
+    """F-01 Regression: System catalog table must not bypass security via CTE name collision."""
+    allowed_tables = {"customers"}
+
+    # PostgreSQL system catalog collision
+    q_pg = "WITH pg_tables AS (SELECT 1 AS id) SELECT * FROM pg_catalog.pg_tables;"
+    res_pg = SQLGuard.validate(q_pg, dialect="postgres", allowed_tables=allowed_tables)
+    assert not res_pg.is_valid
+    assert "protected system schema" in res_pg.error_message.lower()
+
+    # MySQL system catalog collision
+    q_mysql = "WITH user AS (SELECT 1 AS id) SELECT * FROM mysql.user;"
+    res_mysql = SQLGuard.validate(
+        q_mysql, dialect="mysql", allowed_tables=allowed_tables
+    )
+    assert not res_mysql.is_valid
+    assert "protected system schema" in res_mysql.error_message.lower()
+
+    # SQLite system catalog collision (schema-qualified)
+    q_sqlite_main = (
+        "WITH sqlite_master AS (SELECT 1 AS id) SELECT * FROM main.sqlite_master;"
+    )
+    res_sqlite = SQLGuard.validate(
+        q_sqlite_main, dialect="sqlite", allowed_tables=allowed_tables
+    )
+    assert not res_sqlite.is_valid
+    assert (
+        "protected system catalog" in res_sqlite.error_message.lower()
+        or "unauthorized schema-qualified" in res_sqlite.error_message.lower()
+    )
+
+    with pytest.raises(SQLSecurityViolation):
+        execute_safe_query(
+            sqlite_engine,
+            q_pg,
+            allowed_tables=allowed_tables,
+            dialect="postgres",
+        )
+
+
+def test_cte_body_unauthorized_table_reference_rejected():
+    """Verifies tables referenced inside CTE bodies are extracted and checked against allowlist."""
+    allowed_tables = {"customers"}
+    query = """
+    WITH stolen AS (SELECT * FROM secret_passwords)
+    SELECT * FROM stolen;
+    """
+    res = SQLGuard.validate(query, dialect="postgres", allowed_tables=allowed_tables)
+    assert not res.is_valid
+    assert "secret_passwords" in res.extracted_tables
+    assert "unauthorized table reference" in res.error_message.lower()
+
+
+def test_nested_cte_scope_resolution_legitimate_query_accepted():
+    """Verifies scope-aware resolution permits legitimate multi-CTE chains without false positives."""
+    allowed_tables = {"customers", "orders"}
+    query = """
+    WITH c1 AS (SELECT id, name FROM customers),
+         c2 AS (SELECT id, amount FROM orders WHERE amount > 100),
+         joined AS (SELECT c1.name, c2.amount FROM c1 JOIN c2 ON c1.id = c2.id)
+    SELECT * FROM joined;
+    """
+    res = SQLGuard.validate(query, dialect="postgres", allowed_tables=allowed_tables)
+    assert res.is_valid, f"Expected legitimate query to pass: {res.error_message}"
+    assert set(res.extracted_tables) == {"customers", "orders"}
+
+
+# ─────────────────────────────────────────────────────────────
 # 4. BOUNDED EXECUTION, TIMEOUTS & TRUNCATION TESTS
 # ─────────────────────────────────────────────────────────────
 

@@ -233,17 +233,22 @@ def inspect_account_privileges(
 
 def build_safe_url(
     db_type: str,
-    host: str,
-    port: int | str,
-    db_name: str,
-    user: str,
-    password: str,
+    host: str = "",
+    port: int | str = 0,
+    db_name: str = "",
+    user: str = "",
+    password: str = "",
+    ssl_mode: str = "prefer",
 ) -> URL:
     """Build a safe SQLAlchemy URL object without raw string concatenation."""
     if db_type not in SUPPORTED_DIALECTS:
         raise ConnectionConfigError(
             f"Unsupported database type '{db_type}'. Supported: {', '.join(SUPPORTED_DIALECTS.keys())}"
         )
+
+    if db_type == "SQLite":
+        clean_db = str(db_name or "").strip()
+        return URL.create(drivername="sqlite", database=clean_db if clean_db else None)
 
     if not all([host, db_name, user, password]):
         raise ConnectionConfigError(
@@ -267,6 +272,9 @@ def build_safe_url(
     query_params = {}
     if db_type == "MySQL":
         query_params["charset"] = "utf8mb4"
+    if ssl_mode and ssl_mode.lower() not in ("disable", "none", "off"):
+        if db_type == "PostgreSQL":
+            query_params["sslmode"] = ssl_mode.lower()
 
     return URL.create(
         drivername=driver,
@@ -281,13 +289,14 @@ def build_safe_url(
 
 def create_safe_engine(
     db_type: str,
-    host: str,
-    port: int | str,
-    db_name: str,
-    user: str,
-    password: str,
+    host: str = "",
+    port: int | str = 0,
+    db_name: str = "",
+    user: str = "",
+    password: str = "",
     connect_timeout: int = 10,
     enforce_least_privilege: bool = False,
+    ssl_mode: str = "prefer",
 ) -> Engine:
     """
     Creates a configured SQLAlchemy Engine with bounded connection pool and connection validation.
@@ -301,10 +310,15 @@ def create_safe_engine(
         password: Password
         connect_timeout: Network connect timeout in seconds
         enforce_least_privilege: If True, rejects privileged accounts with PrivilegedAccountError
+        ssl_mode: SSL encryption mode for cloud databases (AWS RDS, Azure, GCP Cloud SQL, Supabase)
     """
-    url = build_safe_url(db_type, host, port, db_name, user, password)
+    url = build_safe_url(
+        db_type, host, port, db_name, user, password, ssl_mode=ssl_mode
+    )
 
-    connect_args = {"connect_timeout": connect_timeout}
+    connect_args = {}
+    if db_type in ("PostgreSQL", "MySQL"):
+        connect_args["connect_timeout"] = connect_timeout
     if db_type == "MySQL":
         connect_args.update(
             {
@@ -312,6 +326,14 @@ def create_safe_engine(
                 "write_timeout": connect_timeout * 3,
             }
         )
+        if ssl_mode and ssl_mode.lower() not in ("disable", "none", "off"):
+            mode_upper = ssl_mode.upper()
+            if mode_upper in ("REQUIRE", "REQUIRED"):
+                connect_args["ssl"] = {"ssl_mode": "REQUIRED"}
+            elif mode_upper in ("VERIFY-CA", "VERIFY_CA"):
+                connect_args["ssl"] = {"ssl_mode": "VERIFY_CA"}
+            elif mode_upper in ("VERIFY-FULL", "VERIFY_IDENTITY"):
+                connect_args["ssl"] = {"ssl_mode": "VERIFY_IDENTITY"}
 
     # Bounded pool parameters for networked databases
     pool_kwargs = {

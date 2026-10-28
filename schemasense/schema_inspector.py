@@ -168,6 +168,76 @@ class DatabaseSchema:
             lines.append("\n---\n")
         return "\n".join(lines)
 
+    def to_dbml(self) -> str:
+        """Serializes schema into DBML (Database Markup Language) for dbdiagram.io / dbdocs."""
+        lines = [
+            f"// Database: {self.database_name}",
+            f"// Dialect: {self.dialect}",
+            "",
+        ]
+        refs = []
+        for t_name, table in self.tables.items():
+            lines.append(f"Table {t_name} {{")
+            for col in table.columns:
+                notes = []
+                if col.is_primary_key:
+                    notes.append("pk")
+                if not col.nullable:
+                    notes.append("not null")
+                if col.default is not None:
+                    notes.append(f"default: `{col.default}`")
+                note_str = f" [{', '.join(notes)}]" if notes else ""
+                clean_type = str(col.data_type).lower().replace(" ", "_")
+                lines.append(f"  {col.name} {clean_type}{note_str}")
+            lines.append("}\n")
+
+            for fk in table.foreign_keys:
+                if (
+                    not fk.is_composite
+                    and fk.referred_table
+                    and fk.constrained_column
+                    and fk.referred_column
+                ):
+                    refs.append(
+                        f"Ref: {t_name}.{fk.constrained_column} > {fk.referred_table}.{fk.referred_column}"
+                    )
+
+        if refs:
+            lines.append("// Relationships")
+            lines.extend(refs)
+
+        return "\n".join(lines)
+
+    def to_ddl(self) -> str:
+        """Generates standard SQL CREATE TABLE DDL statements for all schema tables."""
+        statements = []
+        for t_name, table in self.tables.items():
+            col_defs = []
+            for col in table.columns:
+                parts = [f"  {col.name} {col.data_type}"]
+                if not col.nullable:
+                    parts.append("NOT NULL")
+                if col.default is not None:
+                    parts.append(f"DEFAULT {col.default}")
+                col_defs.append(" ".join(parts))
+
+            if table.primary_key:
+                pk_cols = ", ".join(table.primary_key)
+                col_defs.append(f"  PRIMARY KEY ({pk_cols})")
+
+            for fk in table.foreign_keys:
+                if fk.referred_table and fk.constrained_columns and fk.referred_columns:
+                    src = ", ".join(fk.constrained_columns)
+                    ref = ", ".join(fk.referred_columns)
+                    col_defs.append(
+                        f"  FOREIGN KEY ({src}) REFERENCES {fk.referred_table} ({ref})"
+                    )
+
+            body = ",\n".join(col_defs)
+            statements.append(f"CREATE TABLE {t_name} (\n{body}\n);")
+
+        return "\n\n".join(statements)
+
     def to_prompt_context(
         self, table_filter: Sequence[str] | set[str] | None = None
     ) -> str:

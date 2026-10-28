@@ -5,18 +5,18 @@
 # Core runtime dependencies
 streamlit==1.42.2
 google-genai==2.33.0
-pandas==2.2.3
-plotly==6.0.0
-sqlalchemy==2.0.38
+pandas==2.3.3
+plotly==7.1.0
+sqlalchemy==2.0.55
 sqlglot==30.24.0
 pypdf==6.21.2
-psycopg2-binary==2.9.10
-pymysql==1.1.1
+psycopg2-binary==2.9.13
+pymysql==1.2.3
 
 # CI & Testing quality gate dependencies
-pytest==8.3.5
+pytest==9.1.1
 pytest-cov==7.1.0
 ruff==0.17.2
-pip-audit==2.8.0
+pip-audit==2.10.1
 cyclonedx-bom==7.5.0
 detect-secrets==1.5.0

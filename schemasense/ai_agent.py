@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from schemasense.prompts import (
     build_sql_agent_system_instruction,
 )
+from schemasense.runtime.backends.anthropic_backend import AnthropicBackend
 from schemasense.runtime.backends.base import (
     BackendInfo,
     BackendNotAvailableError,
@@ -30,6 +31,7 @@ from schemasense.runtime.backends.gemini import (
 from schemasense.runtime.backends.llama_cpp import (
     LlamaCppBackend,
 )
+from schemasense.runtime.backends.openai_compat import OpenAICompatBackend
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -163,12 +165,18 @@ class SchemaSenseAIAgent:
         backend: InferenceBackend | None = None,
         backend_type: str = "gemini",
         model_path: str | Path | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
     ) -> None:
-        self.api_keys = api_keys if api_keys else load_api_keys()
+        if api_key and not api_keys:
+            self.api_keys = [api_key]
+        else:
+            self.api_keys = api_keys if api_keys else load_api_keys()
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
         self.backend_type = backend_type.lower().strip() if backend_type else "gemini"
         self.model_path = Path(model_path) if model_path is not None else None
+        self.base_url = base_url
         self._active_key_index = 0
 
         if backend is not None:
@@ -185,9 +193,40 @@ class SchemaSenseAIAgent:
                 model_id=self.model_name,
                 timeout_seconds=self.timeout_seconds,
             )
+        elif self.backend_type in ("anthropic", "claude"):
+            self.backend = AnthropicBackend(
+                model_name=self.model_name,
+                api_key=api_key or (self.api_keys[0] if self.api_keys else None),
+                base_url=self.base_url,
+                timeout_seconds=self.timeout_seconds,
+            )
+        elif self.backend_type in (
+            "openai",
+            "deepseek",
+            "groq",
+            "openrouter",
+            "mistral",
+            "together",
+            "ollama",
+            "azure",
+            "azure_openai",
+            "bedrock",
+            "aws_bedrock",
+            "cloudflare",
+            "cloudflare_workers_ai",
+            "custom",
+            "openai_compat",
+        ):
+            self.backend = OpenAICompatBackend(
+                model_name=self.model_name,
+                api_key=api_key or (self.api_keys[0] if self.api_keys else None),
+                base_url=self.base_url,
+                provider_name=self.backend_type,
+                timeout_seconds=self.timeout_seconds,
+            )
         else:
             raise ValueError(
-                f"Unsupported backend_type '{backend_type}'. Supported values are 'gemini' and 'llama_cpp'."
+                f"Unsupported backend_type '{backend_type}'. Supported values are 'gemini', 'openai', 'anthropic', 'deepseek', 'groq', 'ollama', 'azure', 'bedrock', 'cloudflare', 'openrouter', 'mistral', 'custom', and 'llama_cpp'."
             )
 
     @property
@@ -419,6 +458,7 @@ def get_session_agent(
     default_api_keys: list[str] | None = None,
     cache_store: Any = None,
     timeout_seconds: float = 20.0,
+    base_url: str | None = None,
 ) -> SchemaSenseAIAgent:
     """Retrieve or instantiate a SchemaSenseAIAgent with session-isolated caching.
 
@@ -469,6 +509,58 @@ def get_session_agent(
         agent = SchemaSenseAIAgent(
             backend_type="llama_cpp",
             model_path=resolved_path or None,
+            timeout_seconds=timeout_seconds,
+        )
+        if hasattr(store, "__setitem__"):
+            store["_active_agent"] = agent
+            store["_active_agent_cache_key"] = cache_key
+        return agent
+
+    if backend_choice in (
+        "openai",
+        "deepseek",
+        "groq",
+        "openrouter",
+        "mistral",
+        "together",
+        "ollama",
+        "custom",
+        "openai_compat",
+        "anthropic",
+        "claude",
+    ):
+        custom = custom_api_key
+        if custom is None and hasattr(store, "get"):
+            custom = str(store.get("custom_api_key", "")).strip()
+
+        resolved_base_url = base_url
+        if resolved_base_url is None and hasattr(store, "get"):
+            stored_base = store.get("custom_base_url", "")
+            if stored_base:
+                resolved_base_url = str(stored_base).strip()
+
+        cache_key = (
+            backend_choice,
+            model_name,
+            str(custom or ""),
+            str(resolved_base_url or ""),
+        )
+        if (
+            hasattr(store, "get")
+            and store.get("_active_agent_cache_key") == cache_key
+            and store.get("_active_agent") is not None
+        ):
+            return store.get("_active_agent")
+
+        old_agent = store.get("_active_agent") if hasattr(store, "get") else None
+        if old_agent is not None and hasattr(old_agent, "close"):
+            old_agent.close()
+
+        agent = SchemaSenseAIAgent(
+            backend_type=backend_choice,
+            model_name=model_name,
+            api_key=custom or None,
+            base_url=resolved_base_url or None,
             timeout_seconds=timeout_seconds,
         )
         if hasattr(store, "__setitem__"):

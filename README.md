@@ -6,7 +6,7 @@
 [![Python Versions](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![Security: SQLGuard AST](https://img.shields.io/badge/Security-SQLGuard%20AST-10B981?logo=shield)](docs/security/threat-model.md)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-390%20Total%20%7C%20100%25%20Passing-brightgreen?logo=pytest)](tests/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-400%20Total%20%7C%20100%25%20Passing-brightgreen?logo=pytest)](tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-91%25-brightgreen)](tests/)
 [![Supply Chain: CycloneDX](https://img.shields.io/badge/SBOM-CycloneDX%20v1.5-blue?logo=owasp)](sbom.cyclonedx.json)
 [![Secrets: Scanned](https://img.shields.io/badge/Secret%20Scan-detect--secrets-success)](.secrets.baseline)
@@ -21,7 +21,7 @@ An enterprise AI Data Steward and Schema Intelligence Agent that connects to rel
 - **Universal Multi-Cloud & Local AI Architecture**: Connect any model, any provider, and any custom gateway. Natively supports **Google Gemini**, **OpenAI** (GPT-4o, o1, o3-mini), **Microsoft Azure OpenAI Service** (with automated `api-key` header routing and deployment URLs), **AWS Bedrock** (via LiteLLM / gateway), **Cloudflare Workers AI**, **Anthropic Claude** (Claude 3.5 Sonnet, Haiku), **DeepSeek** (V3, R1), **Groq** (Llama 3.3 70B, Mixtral), **OpenRouter** (200+ models), **Mistral AI**, **Ollama** (local HTTP/self-hosted), **Custom OpenAI-compatible gateways**, and **llama.cpp** (local in-process GGUF inference with lazy weight allocation and zero cloud fallback).
 - **Interactive Multi-Palette Theme Engine**: Hand-crafted, high-contrast accessible visual designs including **Clean Light**, **Pure White (Minimal)**, **Obsidian Dark**, **Midnight Charcoal (OLED)**, **Steel Gray**, **Nordic Slate**, and **Deep Ocean Navy**. Dynamically injects theme variables and enforces WCAG-compliant contrast across all text, cards, inputs, and metric chips without page reloads.
 - **Automated PII & Sensitive Entity Classification**: Built-in pattern recognition engine in the column profiler that audits tables for sensitive information (email addresses, phone numbers, credit card numbers, Social Security Numbers, IP addresses) and displays clear severity risk badges in the Data Dictionary and Column Profiler.
-- **Enterprise Zero-Trust Access Gate**: Built-in identity resolver supporting trusted reverse-proxy headers (`X-Forwarded-User`, Cloudflare Access OIDC, AWS ALB, `X-Remote-User`) and cryptographically safe token gating (`SCHEMASENSE_ACCESS_KEY`), keeping unauthorized operators locked out of internal database consoles.
+- **Enterprise Zero-Trust Access Gate**: Built-in identity gateway supporting federated **Google OAuth 2.0** and **GitHub OAuth 2.0** SSO, trusted reverse-proxy headers (`X-Forwarded-User`, Cloudflare Access OIDC, AWS ALB, `X-Remote-User`), and cryptographically safe token gating (`SCHEMASENSE_ACCESS_KEY`), keeping unauthorized operators locked out of internal database consoles.
 - **Schema Architecture & DBML/DDL Dual-Format Export**: Deep introspection capturing primary keys, unique constraints, foreign keys (including composite relationships), and indexes. Includes one-click exports for **DBML** (`.dbml` for dbdiagram.io / dbdocs.io), standard **SQL DDL** (`.sql`), **JSON**, and **Markdown**.
 - **Cloud Database SSL/TLS Security**: Native encryption modes (`prefer`, `require`, `verify-ca`, `verify-full`) allowing instant, secure connections to managed cloud database instances on AWS RDS, AWS Aurora, Azure Database Flexible Server, Google Cloud SQL, Supabase, and Neon.
 - **AST-Based SQLGuard**: Dialect-aware parser powered by `sqlglot`. Strictly enforces single read-only `SELECT` statements, validates tables against an active allowlist, resolves CTE aliases by AST scope, prevents schema spoofing, blocks destructive DDL/DML, and enforces database-level statement timeouts (5,000ms) and row caps (1,000 rows).
@@ -66,13 +66,13 @@ pip install -r requirements.txt -c constraints.txt
 
 ### 2. Run Test Suite & Coverage
 
-Verify the security boundaries, backend contracts, and analytical logic across the test suite (**390 tests total with 100% pass rate**):
+Verify the security boundaries, backend contracts, and analytical logic across the test suite (**400 tests total with 100% pass rate**):
 
-- **Fast Unit, AST Guardrail & Contract Suite (348 tests)**: In-memory SQLite, mock schemas, AST SQLGuard adversarial syntax, universal AI backend resilience, and UI headless AppTests. Executes in <26 seconds without external dependencies.
+- **Fast Unit, AST Guardrail & Contract Suite (358 tests)**: In-memory SQLite, mock schemas, AST SQLGuard adversarial syntax, universal AI backend resilience, OAuth 2.0 flows, and UI headless AppTests. Executes in <26 seconds without external dependencies.
 - **Live Multi-Database Suite (42 tests)**: Real PostgreSQL 16, MySQL 8.4, and SQLite container tests. Automatically executes when test containers are active, or skips safely when offline.
 
 ```bash
-# 1. Run fast offline test suite (348 tests):
+# 1. Run fast offline test suite (358 tests):
 pytest -v -m "not docker"
 
 # 2. Fast isolated unit suite with coverage:
@@ -160,9 +160,11 @@ schemasense/
 │   ├── schema_inspector.py         # PKs, FKs, constraints, indexes, data dictionaries, DBML/DDL exports & schema drift diffing
 │   ├── profiler.py                 # Data quality metrics, automated PII entity scanner, outlier detection, scoring formula
 │   ├── rules_engine.py             # PDF business-rule ingestion (pypdf) & prompt grounding
-│   └── benchmark.py                # Synthetic workload & latency benchmark harnesses
-├── tests/                          # 390 Unit, Adversarial, Integration, and AppTest tests
+│   ├── benchmark.py                # Synthetic workload & latency benchmark harnesses
+│   └── auth.py                     # Enterprise OAuth 2.0 (Google & GitHub SSO), IAP headers, token gateway
+├── tests/                          # 400 Unit, Adversarial, Integration, and AppTest tests
 │   ├── conftest.py                 # SQLite test fixtures & mock schemas
+│   ├── test_auth.py                # 10 Google & GitHub OAuth 2.0 and identity gateway tests
 │   ├── test_backends_base.py       # Neutral backend contract tests
 │   ├── test_backends_gemini.py     # Gemini backend & key rotation tests
 │   ├── test_backends_openai.py     # Universal OpenAI / Azure / Bedrock / Cloudflare backend tests

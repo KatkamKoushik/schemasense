@@ -642,8 +642,42 @@ if "schema_snapshots" not in st.session_state:
 # ──────────────────────────────────────────────
 # ENTERPRISE ACCESS CONTROL & AUTHENTICATION
 # ──────────────────────────────────────────────
+# 0. Check incoming OAuth 2.0 callback in URL query parameters
+if hasattr(st, "query_params") and "code" in st.query_params:
+    oauth_code = st.query_params.get("code")
+    oauth_state = st.query_params.get("state", "")
+    try:
+        from schemasense.auth import exchange_oauth_code
+
+        with st.spinner("Authenticating enterprise SSO session..."):
+            user_data = exchange_oauth_code(code=oauth_code, state=oauth_state)
+            st.session_state.authenticated = True
+            st.session_state.session_locked = False
+            st.session_state.auth_user = user_data["name"]
+            st.session_state.auth_email = user_data.get("email", "")
+            st.session_state.auth_method = user_data["auth_method"]
+            st.session_state.auth_avatar = user_data.get("avatar_url", "")
+            st.query_params.clear()
+            st.rerun()
+    except Exception as oauth_err:  # noqa: BLE001
+        st.query_params.clear()
+        st.session_state.oauth_error = str(oauth_err)
+
+# 0.1 Check for Streamlit native OIDC authentication (st.user)
+if hasattr(st, "user") and getattr(st.user, "is_logged_in", False):
+    st.session_state.authenticated = True
+    st.session_state.session_locked = False
+    st.session_state.auth_user = (
+        getattr(st.user, "name", None)
+        or getattr(st.user, "email", None)
+        or "Streamlit Operator"
+    )
+    st.session_state.auth_email = getattr(st.user, "email", "")
+    st.session_state.auth_method = "Streamlit Native OIDC"
+
+
 def resolve_enterprise_identity() -> tuple[bool, str, str]:
-    """Inspects reverse-proxy headers (OIDC, Cloudflare, ALB) or environment access key."""
+    """Inspects reverse-proxy headers (OIDC, Cloudflare, ALB), OAuth session, or access key."""
     # 1. Reverse-proxy / Identity-Aware Proxy (IAP) headers
     headers = {}
     if hasattr(st, "context") and hasattr(st.context, "headers"):
@@ -658,7 +692,17 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
         if h_val := headers.get(h_name):
             return True, h_val, "Trusted OIDC / Reverse Proxy"
 
-    # 2. Configured enterprise access key / token
+    # 2. Check explicit session state (from OAuth or Security Key)
+    if st.session_state.get("authenticated", False):
+        user = st.session_state.get("auth_user", "Authorized Operator")
+        method = st.session_state.get("auth_method", "Authenticated Session")
+        return True, user, method
+
+    # 3. Check if explicit session lock is engaged
+    if st.session_state.get("session_locked", False):
+        return False, "", "Console Locked"
+
+    # 4. Check if token gate or mandatory OAuth gating is required
     configured_key = os.getenv("SCHEMASENSE_ACCESS_KEY") or os.getenv(
         "SCHEMASENSE_AUTH_KEY"
     )
@@ -667,38 +711,95 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
             configured_key = st.secrets.get("auth", {}).get("access_token", "")
         except Exception:  # noqa: BLE001
             configured_key = ""
-
     configured_key = (configured_key or "").strip()
 
-    # If no key configured, running in local evaluation / demo mode
-    if not configured_key:
-        return True, "Local Operator", "Evaluation Mode (Local)"
+    is_mandatory = os.getenv("SCHEMASENSE_REQUIRE_AUTH", "").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    if not is_mandatory and hasattr(st, "secrets"):
+        try:
+            is_mandatory = bool(st.secrets.get("auth", {}).get("require_auth", False))
+        except Exception:  # noqa: BLE001
+            is_mandatory = False
 
-    # If key is required, check session state
-    if st.session_state.get("authenticated", False):
-        user = st.session_state.get("auth_user", "Authorized Operator")
-        return True, user, "Security Access Token"
+    if configured_key or is_mandatory:
+        return False, "", "Authentication Required"
 
-    return False, "", "Token Gated"
+    # Default to Local Operator in evaluation mode
+    return True, "Local Operator", "Evaluation Mode (Local)"
 
 
 is_auth, auth_user, auth_mech = resolve_enterprise_identity()
 if not is_auth:
+    from schemasense.auth import (
+        get_github_auth_url,
+        get_github_config,
+        get_google_auth_url,
+        get_google_config,
+    )
+
     st.markdown(
         """
-        <div style="max-width: 540px; margin: 3rem auto; padding: 2rem; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
-            <div style="font-size: 1.3rem; font-weight: 800; color: var(--text-primary); margin-bottom: 0.25rem;">
-                SchemaSense Enterprise Console
+        <div style="max-width: 520px; margin: 3rem auto 1.5rem auto; text-align: center;">
+            <div style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 14px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); margin-bottom: 1rem;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
             </div>
-            <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
-                This database intelligence console is protected by an enterprise access gate. Enter your security key or sign in via your identity provider.
+            <div style="font-size: 1.45rem; font-weight: 800; color: var(--text-primary); margin-bottom: 0.35rem; letter-spacing: -0.02em;">
+                SchemaSense Enterprise Gateway
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;">
+                Zero-trust database intelligence and AST query sandboxing.<br/>
+                Sign in with corporate SSO (Google or GitHub) or enter an enterprise access key.
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    if st.session_state.get("oauth_error"):
+        st.error(f"Authentication Failed: {st.session_state.pop('oauth_error')}")
+
     col_a1, col_a2, col_a3 = st.columns([1, 2, 1])
     with col_a2:
+        google_cfg = get_google_config()
+        github_cfg = get_github_config()
+
+        if google_cfg:
+            g_url = get_google_auth_url()
+            if g_url:
+                st.link_button(
+                    "Sign in with Google",
+                    g_url,
+                    use_container_width=True,
+                )
+
+        if github_cfg:
+            gh_url = get_github_auth_url()
+            if gh_url:
+                st.link_button(
+                    "Sign in with GitHub",
+                    gh_url,
+                    use_container_width=True,
+                )
+
+        if google_cfg or github_cfg:
+            st.markdown(
+                """
+                <div style="text-align: center; margin: 1.25rem 0 1rem 0; position: relative;">
+                    <div style="height: 1px; background: var(--border-subtle); position: absolute; top: 50%; left: 0; right: 0;"></div>
+                    <span style="position: relative; background: var(--bg-canvas); padding: 0 12px; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+                        OR SECURITY KEY
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         with st.form("auth_gate_form"):
             entered_key = st.text_input(
                 "Enterprise Security Key",
@@ -719,11 +820,21 @@ if not is_auth:
                         expected = ""
                 if entered_key and entered_key.strip() == (expected or "").strip():
                     st.session_state.authenticated = True
+                    st.session_state.session_locked = False
                     st.session_state.auth_user = "Authorized Operator"
                     st.session_state.auth_method = "Security Access Token"
                     st.rerun()
                 else:
                     st.error("Access Denied: Invalid Security Key.")
+
+        st.markdown(
+            """
+            <div style="text-align: center; margin-top: 1.5rem; font-size: 0.72rem; color: var(--text-muted);">
+                OAuth 2.0 SSO Active • AST SQLGuard Protected • Least-Privilege Enforced
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     st.stop()
 
 st.session_state.auth_user = auth_user
@@ -1434,20 +1545,59 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         with st.expander("Session Identity", expanded=False):
+            avatar_html = ""
+            if st.session_state.get("auth_avatar"):
+                avatar_html = f'<img src="{st.session_state.auth_avatar}" style="width:36px; height:36px; border-radius:50%; margin-bottom:8px; border:1px solid var(--border-active);" alt="Avatar" /><br/>'
+
+            email_html = (
+                f"<div><strong>Email:</strong> {st.session_state.auth_email}</div>"
+                if st.session_state.get("auth_email")
+                else ""
+            )
+
             st.markdown(
                 f"""
                 <div style="font-size:0.75rem; color:var(--text-secondary);">
+                    {avatar_html}
                     <div><strong>Operator:</strong> {st.session_state.auth_user}</div>
+                    {email_html}
                     <div><strong>Gateway:</strong> {st.session_state.auth_method}</div>
                     <div style="margin-top:6px; font-size:0.7rem; color:var(--text-muted);">
-                        Protected by trusted reverse-proxy headers or token gate. See docs/security/access-control.md.
+                        Protected by enterprise SSO and AST guardrails. See docs/security/access-control.md.
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            if st.button("Lock Console Session", use_container_width=True):
+
+            # If not yet authenticated via OAuth, offer quick SSO login buttons in sidebar
+            if (
+                not st.session_state.get("authenticated", False)
+                or st.session_state.get("auth_method") == "Evaluation Mode (Local)"
+            ):
+                from schemasense.auth import (
+                    get_github_auth_url,
+                    get_google_auth_url,
+                )
+
+                g_url = get_google_auth_url()
+                if g_url:
+                    st.link_button(
+                        "Sign in with Google", g_url, use_container_width=True
+                    )
+                gh_url = get_github_auth_url()
+                if gh_url:
+                    st.link_button(
+                        "Sign in with GitHub", gh_url, use_container_width=True
+                    )
+
+            if st.button("Lock Console Session / Sign Out", use_container_width=True):
                 st.session_state.authenticated = False
+                st.session_state.session_locked = True
+                st.session_state.pop("auth_user", None)
+                st.session_state.pop("auth_email", None)
+                st.session_state.pop("auth_method", None)
+                st.session_state.pop("auth_avatar", None)
                 st.rerun()
 
 # ──────────────────────────────────────────────
@@ -1491,7 +1641,10 @@ provider_badge_html = f'<div class="console-badge badge-cyan"><span>{active_back
 theme_badge_html = (
     f'<div class="console-badge"><span>Theme: {st.session_state.app_theme}</span></div>'
 )
-auth_badge_html = f'<div class="console-badge badge-connected"><span>Operator: {st.session_state.auth_user}</span></div>'
+if st.session_state.get("auth_avatar"):
+    auth_badge_html = f'<div class="console-badge badge-connected"><img src="{st.session_state.auth_avatar}" style="width:16px; height:16px; border-radius:50%; margin-right:4px; vertical-align:middle;" /><span>Operator: {st.session_state.auth_user}</span></div>'
+else:
+    auth_badge_html = f'<div class="console-badge badge-connected"><span>Operator: {st.session_state.auth_user}</span></div>'
 
 # CONSOLE HEADER
 st.markdown(

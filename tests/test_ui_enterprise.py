@@ -66,7 +66,7 @@ def test_ui_provider_selection_options():
     provider_select.select("OpenAI")
     at.run()
     assert not at.exception
-    assert at.session_state.get("backend_mode_select") == "OpenAI"
+    assert at.session_state["backend_mode_select"] == "OpenAI"
 
     # Re-query and select Anthropic Claude
     provider_select = next(
@@ -76,7 +76,7 @@ def test_ui_provider_selection_options():
     provider_select.select("Anthropic Claude")
     at.run()
     assert not at.exception
-    assert at.session_state.get("backend_mode_select") == "Anthropic Claude"
+    assert at.session_state["backend_mode_select"] == "Anthropic Claude"
 
 
 def test_ui_sqlite_connection_and_diff():
@@ -146,7 +146,11 @@ def test_ui_sqlite_connection_and_diff():
         assert len(at.session_state.schema_snapshots) >= 1
 
     finally:
-        if at is not None and at.session_state.get("db_engine") is not None:
+        if (
+            at is not None
+            and "db_engine" in at.session_state
+            and at.session_state["db_engine"] is not None
+        ):
             dispose_engine(at.session_state.db_engine)
         Path(db_path).unlink(missing_ok=True)
 

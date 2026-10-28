@@ -87,6 +87,28 @@ class TestAgentBackendSelectionConstruction:
         assert agent.backend_info.is_local is True
         assert agent.model_path == model_file
 
+    def test_explicit_openai_and_anthropic_backend_types(self):
+        """Explicitly requesting 'openai' and 'anthropic' initializes their respective adapters."""
+        agent_o = SchemaSenseAIAgent(
+            backend_type="openai", api_key="sk-test", model_name="gpt-4o"
+        )
+        assert agent_o.backend_type == "openai"
+        assert agent_o.is_local is False
+        assert agent_o.backend_info.backend_id == "openai-gpt-4o"
+
+        agent_a = SchemaSenseAIAgent(
+            backend_type="anthropic",
+            api_key="sk-ant-test",
+            model_name="claude-3-5-sonnet",
+        )
+        assert agent_a.backend_type == "anthropic"
+        assert agent_a.is_local is False
+        assert agent_a.backend_info.backend_id == "anthropic-claude-3-5-sonnet"
+
+        agent_ol = SchemaSenseAIAgent(backend_type="ollama", model_name="llama3.2")
+        assert agent_ol.backend_type == "ollama"
+        assert agent_ol.is_local is True
+
     def test_backend_type_aliases_normalize_correctly(self, tmp_path):
         """Aliases 'cloud' and 'local' map cleanly to gemini and llama_cpp."""
         agent_cloud = SchemaSenseAIAgent(

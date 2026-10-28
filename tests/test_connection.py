@@ -49,6 +49,15 @@ def test_build_safe_url_mysql():
     assert url.query.get("charset") == "utf8mb4"
 
 
+def test_build_safe_url_sqlite():
+    url = build_safe_url(db_type="SQLite", db_name="test.db")
+    assert url.drivername == "sqlite"
+    assert url.database == "test.db"
+
+    url_mem = build_safe_url(db_type="SQLite")
+    assert url_mem.drivername == "sqlite"
+
+
 def test_build_safe_url_invalid_port():
     with pytest.raises(ConnectionConfigError):
         build_safe_url("PostgreSQL", "localhost", "not-a-port", "db", "user", "pass")

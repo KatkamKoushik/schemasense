@@ -233,17 +233,21 @@ def inspect_account_privileges(
 
 def build_safe_url(
     db_type: str,
-    host: str,
-    port: int | str,
-    db_name: str,
-    user: str,
-    password: str,
+    host: str = "",
+    port: int | str = 0,
+    db_name: str = "",
+    user: str = "",
+    password: str = "",
 ) -> URL:
     """Build a safe SQLAlchemy URL object without raw string concatenation."""
     if db_type not in SUPPORTED_DIALECTS:
         raise ConnectionConfigError(
             f"Unsupported database type '{db_type}'. Supported: {', '.join(SUPPORTED_DIALECTS.keys())}"
         )
+
+    if db_type == "SQLite":
+        clean_db = str(db_name or "").strip()
+        return URL.create(drivername="sqlite", database=clean_db if clean_db else None)
 
     if not all([host, db_name, user, password]):
         raise ConnectionConfigError(
@@ -281,11 +285,11 @@ def build_safe_url(
 
 def create_safe_engine(
     db_type: str,
-    host: str,
-    port: int | str,
-    db_name: str,
-    user: str,
-    password: str,
+    host: str = "",
+    port: int | str = 0,
+    db_name: str = "",
+    user: str = "",
+    password: str = "",
     connect_timeout: int = 10,
     enforce_least_privilege: bool = False,
 ) -> Engine:
@@ -304,7 +308,9 @@ def create_safe_engine(
     """
     url = build_safe_url(db_type, host, port, db_name, user, password)
 
-    connect_args = {"connect_timeout": connect_timeout}
+    connect_args = {}
+    if db_type in ("PostgreSQL", "MySQL"):
+        connect_args["connect_timeout"] = connect_timeout
     if db_type == "MySQL":
         connect_args.update(
             {

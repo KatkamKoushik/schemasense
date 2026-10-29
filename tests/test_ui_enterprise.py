@@ -205,3 +205,49 @@ def test_ui_production_fail_closed_without_auth(monkeypatch):
 
     # In production without auth, an error must be displayed and execution stopped
     assert any("CRITICAL SECURITY CONFIGURATION ERROR" in e.value for e in at.error)
+
+
+def test_ui_local_operator_evaluation_unlock_and_lock_cycle(monkeypatch):
+    """Verifies that in non-production environments, the evaluation unlock button
+    allows local testing, sets session identity, and permits re-locking the console."""
+    monkeypatch.setenv("SCHEMASENSE_ACCESS_KEY", "prod-token-12345")
+    monkeypatch.setenv("SCHEMASENSE_ENV", "development")
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    at.run()
+    assert not at.exception
+    assert (
+        "authenticated" not in at.session_state
+        or at.session_state["authenticated"] is False
+    )
+
+    # Evaluation button is visible in non-prod
+    eval_btn = next(
+        (b for b in at.button if "Continue as Local Operator" in b.label), None
+    )
+    assert eval_btn is not None
+
+    # Click evaluation button to unlock
+    eval_btn.click()
+    at.run()
+    assert not at.exception
+    assert at.session_state.authenticated is True
+    assert at.session_state.session_locked is False
+    assert at.session_state.auth_user == "Local Operator"
+    assert at.session_state.auth_method == "Evaluation Mode (Local)"
+
+    # Verify Operator Identity card in sidebar
+    sidebar_md_values = [m.value for m in at.sidebar.markdown]
+    assert any(
+        "Operator Identity" in v and "Local Operator" in v for v in sidebar_md_values
+    )
+    assert any("Evaluation Mode (Local)" in v for v in sidebar_md_values)
+
+    # Verify Lock Console button is present in sidebar
+    assert any("Lock Console / Open Login Gate" in b.label for b in at.sidebar.button)
+
+    # Now verify in production mode the evaluation button is completely hidden
+    monkeypatch.setenv("SCHEMASENSE_ENV", "production")
+    at_prod = AppTest.from_file(APP_PATH, default_timeout=20)
+    at_prod.run()
+    assert not any("Continue as Local Operator" in b.label for b in at_prod.button)

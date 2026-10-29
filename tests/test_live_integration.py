@@ -332,7 +332,7 @@ def mysql_admin_engine():
         for _ in range(50):
             conn.execute(
                 text("""
-                INSERT INTO analytics_log (event_type) VALUES 
+                INSERT INTO analytics_log (event_type) VALUES
                 ('click'), ('view'), ('cart'), ('checkout'), ('login'),
                 ('click'), ('view'), ('cart'), ('checkout'), ('login'),
                 ('click'), ('view'), ('cart'), ('checkout'), ('login'),
@@ -460,8 +460,8 @@ def test_live_postgres_statement_timeout(postgres_readonly_engine):
 def test_live_postgres_connection_pool_reuse_after_timeout(postgres_readonly_engine):
     """Verifies that connection pool remains completely healthy and resets timeout after an aborted query."""
     allowed_tables = {"customers"}
-    # Force a timeout
-    try:
+    # Force a timeout and assert it raises QueryTimeoutError
+    with pytest.raises(QueryTimeoutError):
         execute_safe_query(
             engine=postgres_readonly_engine,
             query="SELECT count(*) FROM customers a, customers b, customers c, customers d, customers e, customers f",
@@ -469,8 +469,6 @@ def test_live_postgres_connection_pool_reuse_after_timeout(postgres_readonly_eng
             dialect="postgres",
             timeout_ms=150,
         )
-    except QueryTimeoutError:
-        pass
 
     # Next query on same engine must succeed cleanly
     df, is_truncated = execute_safe_query(
@@ -704,7 +702,7 @@ def test_live_mysql_statement_timeout(mysql_readonly_engine):
 def test_live_mysql_connection_pool_reuse_after_timeout(mysql_readonly_engine):
     """Verifies that MySQL session state resets cleanly and subsequent queries succeed."""
     allowed_tables = {"customers"}
-    try:
+    with pytest.raises(QueryTimeoutError):
         execute_safe_query(
             engine=mysql_readonly_engine,
             query="SELECT a.name, b.name FROM customers a JOIN customers b ON a.name != b.name JOIN customers c ON b.name != c.name JOIN customers d ON c.name != d.name JOIN customers e ON d.name != e.name ORDER BY md5(concat(a.name, b.name, c.name, d.name, e.name))",
@@ -712,8 +710,6 @@ def test_live_mysql_connection_pool_reuse_after_timeout(mysql_readonly_engine):
             dialect="mysql",
             timeout_ms=150,
         )
-    except QueryTimeoutError:
-        pass
 
     # Ensure subsequent query works without timeout
     df, is_truncated = execute_safe_query(

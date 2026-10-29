@@ -35,6 +35,12 @@ def test_linux_meminfo_parser(tmp_path: Path):
         patch("builtins.open", MagicMock(return_value=io_wrapper(meminfo_content))),
     ):
         tot, av, sw_tot, sw_av = HardwareInspector._inspect_memory()
+        assert (
+            tot is not None
+            and av is not None
+            and sw_tot is not None
+            and sw_av is not None
+        )
         # 32840960 kB // 1024 = 32071 MB
         assert abs(tot - 32071) <= 1
         # 24576000 kB // 1024 = 24000 MB

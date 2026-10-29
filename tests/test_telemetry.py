@@ -72,3 +72,31 @@ def test_telemetry_buffer_bounds_enforced():
     assert len(recent) == 3
     assert recent[0].details["idx"] == 2
     assert recent[-1].details["idx"] == 4
+
+
+@pytest.mark.unit
+def test_redact_sql_literals_and_fingerprinting():
+    """Verifies that SQL strings, PII, and numbers are scrubbed into ? with deterministic fingerprints."""
+    from schemasense.telemetry import compute_query_fingerprint, redact_sql_literals
+
+    raw_sql1 = (
+        "SELECT * FROM users WHERE email = 'ceo@enterprise.com' AND salary > 250000;"
+    )
+    raw_sql2 = "SELECT * FROM users WHERE email = 'dev@startup.io' AND salary > 80000;"
+
+    scrubbed1 = redact_sql_literals(raw_sql1)
+    scrubbed2 = redact_sql_literals(raw_sql2)
+
+    assert "ceo@enterprise.com" not in scrubbed1
+    assert "250000" not in scrubbed1
+    assert "dev@startup.io" not in scrubbed2
+    assert "80000" not in scrubbed2
+
+    assert "email = '?'" in scrubbed1
+    assert "salary > ?" in scrubbed1
+
+    # Deterministic fingerprint matching across literal variations
+    fp1 = compute_query_fingerprint(raw_sql1)
+    fp2 = compute_query_fingerprint(raw_sql2)
+    assert len(fp1) == 64  # SHA-256
+    assert fp1 == fp2  # Identical query templates have identical fingerprints

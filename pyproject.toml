@@ -30,6 +30,7 @@ markers = [
     "integration: Live database and container integration tests (PostgreSQL, MySQL)",
     "adversarial: Security, injection, AST parser, and threat model verification tests",
     "ui: Headless Streamlit AppTest integration and UI workflow tests",
+    "playwright: Real browser Playwright end-to-end tests",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

@@ -252,3 +252,55 @@ def test_defensive_foreign_key_metadata_handling():
     assert fk_empty.constrained_column == ""
     assert fk_empty.referred_column == ""
     assert fk_empty.column_pairs == []
+
+
+def test_composite_foreign_key_dbml_export():
+    """Verifies that composite foreign keys are exported to DBML in valid Ref syntax."""
+    from schemasense.schema_inspector import (
+        ColumnInfo,
+        DatabaseSchema,
+        ForeignKeyInfo,
+        TableSchema,
+    )
+
+    t_orders = TableSchema(
+        name="orders",
+        columns=[
+            ColumnInfo("tenant_id", "text", nullable=False, is_primary_key=True),
+            ColumnInfo("order_id", "text", nullable=False, is_primary_key=True),
+            ColumnInfo("amount", "real", nullable=True),
+        ],
+        primary_key=["tenant_id", "order_id"],
+        foreign_keys=[
+            ForeignKeyInfo(
+                constrained_columns=["tenant_id", "customer_id"],
+                referred_table="customers",
+                referred_columns=["tenant_id", "id"],
+                name="fk_tenant_cust",
+            )
+        ],
+        comment="Enterprise customer orders table",
+    )
+
+    t_cust = TableSchema(
+        name="customers",
+        columns=[
+            ColumnInfo("tenant_id", "text", nullable=False, is_primary_key=True),
+            ColumnInfo("id", "text", nullable=False, is_primary_key=True),
+        ],
+        primary_key=["tenant_id", "id"],
+        comment="Enterprise accounts",
+    )
+
+    db = DatabaseSchema(
+        dialect="postgres",
+        database_name="app_db",
+        tables={"orders": t_orders, "customers": t_cust},
+    )
+
+    dbml = db.to_dbml()
+    assert "Ref: orders.(tenant_id, customer_id) > customers.(tenant_id, id)" in dbml
+
+    md = db.to_markdown()
+    assert "*Enterprise customer orders table*" in md
+    assert "*Enterprise accounts*" in md

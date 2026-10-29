@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -27,6 +28,34 @@ def redact_sensitive_string(raw: str) -> str:
     masked = _SECRET_PATTERNS[0].sub(r"\1=***", masked)
     masked = _SECRET_PATTERNS[1].sub(r"://\1:***@", masked)
     return masked
+
+
+def redact_sql_literals(sql: str) -> str:
+    """
+    Scrubs sensitive user literals (PII, names, passwords, amounts) from SQL query strings.
+    Replaces string literals ('...') and numeric constants in predicates with '?'.
+    """
+    if not sql:
+        return ""
+    # 1. Replace single-quoted string literals with '?'
+    scrubbed = re.sub(r"'(?:''|[^'])*'", "'?'", sql)
+    # 2. Replace numeric literals in predicates and assignments
+    scrubbed = re.sub(
+        r"(?<=[=><!,\s(])\b\d+(?:\.\d+)?\b(?=[=><!,\s);]|$)", "?", scrubbed
+    )
+    return scrubbed
+
+
+def compute_query_fingerprint(sql: str) -> str:
+    """
+    Computes a deterministic SHA-256 fingerprint from normalized, literal-scrubbed SQL.
+    Enables aggregated query-frequency and performance analytics without storing raw PII.
+    """
+    if not sql:
+        return ""
+    redacted = redact_sql_literals(sql)
+    normalized = " ".join(redacted.split()).strip().lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -73,10 +102,13 @@ class TelemetryCollector:
         is_truncated: bool,
         error: str | None = None,
     ) -> TelemetryEvent:
+        redacted_sql = redact_sql_literals(query)
+        fingerprint = compute_query_fingerprint(query)
         return self.record_event(
             event_type="query_execution",
             dialect=dialect,
-            query=query,
+            query=redacted_sql,
+            query_fingerprint=fingerprint,
             row_count=row_count,
             duration_ms=round(duration_ms, 2),
             is_truncated=is_truncated,
@@ -91,10 +123,13 @@ class TelemetryCollector:
         reason: str,
         dialect: str,
     ) -> TelemetryEvent:
+        redacted_sql = redact_sql_literals(query)
+        fingerprint = compute_query_fingerprint(query)
         return self.record_event(
             event_type="security_violation",
             violation_type=violation_type,
-            query=query,
+            query=redacted_sql,
+            query_fingerprint=fingerprint,
             reason=reason,
             dialect=dialect,
         )

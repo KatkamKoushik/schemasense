@@ -16,6 +16,31 @@ import httpx
 
 logger = logging.getLogger("schemasense.auth")
 
+
+class OAuthStateError(ValueError):
+    """Raised when an OAuth 2.0 callback state parameter is invalid, expired, missing, or mismatched."""
+
+
+def generate_oauth_state(provider: str) -> str:
+    """Generates an unguessable 32-byte cryptographic state nonce bound to the authentication provider."""
+    clean_provider = provider.strip().lower()
+    return f"{clean_provider}_{secrets.token_urlsafe(32)}"
+
+
+def verify_oauth_state(
+    received_state: Optional[str], expected_state: Optional[str]
+) -> bool:
+    """
+    Constant-time comparison validating that the callback state matches the browser's session nonce.
+    Prevents OAuth login CSRF and cross-session authentication hijacking.
+    """
+    if not received_state or not expected_state:
+        return False
+    return secrets.compare_digest(
+        str(received_state).strip(), str(expected_state).strip()
+    )
+
+
 # OAuth 2.0 Provider Endpoints
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -61,7 +86,7 @@ def resolve_redirect_uri(explicit_uri: Optional[str] = None) -> str:
         import streamlit as st
 
         if hasattr(st, "context") and hasattr(st.context, "headers"):
-            headers = st.context.headers or {}
+            headers: dict[str, Any] = dict(st.context.headers or {})
             host = headers.get("x-forwarded-host") or headers.get("host")
             if host:
                 proto = headers.get("x-forwarded-proto")
@@ -141,7 +166,7 @@ def get_google_auth_url(
     if not cfg:
         return None
 
-    state_token = state or f"google_{secrets.token_urlsafe(16)}"
+    state_token = state or generate_oauth_state("google")
     params = {
         "client_id": cfg["client_id"],
         "redirect_uri": cfg["redirect_uri"],
@@ -162,7 +187,7 @@ def get_github_auth_url(
     if not cfg:
         return None
 
-    state_token = state or f"github_{secrets.token_urlsafe(16)}"
+    state_token = state or generate_oauth_state("github")
     params = {
         "client_id": cfg["client_id"],
         "redirect_uri": cfg["redirect_uri"],
@@ -293,9 +318,16 @@ def exchange_github_code(
 def exchange_oauth_code(
     code: str,
     state: Optional[str] = None,
+    expected_state: Optional[str] = None,
     redirect_uri: Optional[str] = None,
 ) -> dict[str, Any]:
     """Exchanges an authorization code with the provider identified by state or configuration."""
+    if expected_state is not None:
+        if not verify_oauth_state(state, expected_state):
+            raise OAuthStateError(
+                "OAuth state validation failed: state token mismatch, expired, or CSRF detected."
+            )
+
     state_str = str(state or "")
     if state_str.startswith("google_") or state_str == "google":
         return exchange_google_code(code, redirect_uri)

@@ -186,3 +186,22 @@ def test_ui_enterprise_auth_gate_locking_and_unlocking(monkeypatch):
     assert at.session_state.authenticated is True
     # Now the console is unlocked and sidebar is available
     assert any("Database Engine" in s.label for s in at.sidebar.selectbox)
+
+
+def test_ui_production_fail_closed_without_auth(monkeypatch):
+    """Verifies that SCHEMASENSE_ENV=production halts with a critical error if no auth is configured."""
+    monkeypatch.setenv("SCHEMASENSE_ENV", "production")
+    monkeypatch.delenv("SCHEMASENSE_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("SCHEMASENSE_AUTH_KEY", raising=False)
+    monkeypatch.delenv("SCHEMASENSE_REQUIRE_AUTH", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+
+    from unittest.mock import patch
+
+    with patch("schemasense.auth.is_oauth_configured", return_value=False):
+        at = AppTest.from_file(APP_PATH, default_timeout=20)
+        at.run()
+
+    # In production without auth, an error must be displayed and execution stopped
+    assert any("CRITICAL SECURITY CONFIGURATION ERROR" in e.value for e in at.error)

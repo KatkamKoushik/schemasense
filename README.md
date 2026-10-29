@@ -6,7 +6,7 @@
 [![Python Versions](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![Security: SQLGuard AST](https://img.shields.io/badge/Security-SQLGuard%20AST-10B981?logo=shield)](docs/security/threat-model.md)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-400%20Total%20%7C%20100%25%20Passing-brightgreen?logo=pytest)](tests/)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-417%20Total%20%7C%20100%25%20Passing-brightgreen?logo=pytest)](tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-91%25-brightgreen)](tests/)
 [![Supply Chain: CycloneDX](https://img.shields.io/badge/SBOM-CycloneDX%20v1.5-blue?logo=owasp)](sbom.cyclonedx.json)
 [![Secrets: Scanned](https://img.shields.io/badge/Secret%20Scan-detect--secrets-success)](.secrets.baseline)

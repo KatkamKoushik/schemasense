@@ -254,6 +254,20 @@ def profile_dataframe(
     )
 
 
+def escape_sql_identifier(identifier: str, dialect: str = "postgres") -> str:
+    """
+    Safely quotes and escapes SQL identifiers (tables, schemas, columns) per database dialect.
+    Prevents SQL syntax breakouts and injection from identifiers containing quotes.
+    """
+    clean = str(identifier).strip()
+    if dialect.lower() == "mysql":
+        escaped = clean.replace("`", "``")
+        return f"`{escaped}`"
+    else:
+        escaped = clean.replace('"', '""')
+        return f'"{escaped}"'
+
+
 def build_safe_profiling_query(
     table_name: str, dialect: str = "postgres", sample_size: int = 1000
 ) -> str:
@@ -264,14 +278,8 @@ def build_safe_profiling_query(
     # Handle schema.table qualified names
     if "." in clean_table:
         parts = clean_table.split(".", 1)
-        if dialect.lower() == "mysql":
-            quoted = f"`{parts[0]}`.`{parts[1]}`"
-        else:
-            quoted = f'"{parts[0]}"."{parts[1]}"'
+        quoted = f"{escape_sql_identifier(parts[0], dialect)}.{escape_sql_identifier(parts[1], dialect)}"
     else:
-        if dialect.lower() == "mysql":
-            quoted = f"`{clean_table}`"
-        else:
-            quoted = f'"{clean_table}"'
+        quoted = escape_sql_identifier(clean_table, dialect)
 
     return f"SELECT * FROM {quoted} LIMIT {cap}"

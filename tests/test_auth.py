@@ -196,3 +196,60 @@ def test_exchange_google_code_failure(monkeypatch):
     with patch("httpx.Client.post", return_value=err_mock):
         with pytest.raises(RuntimeError, match="Google token exchange failed"):
             exchange_google_code(code="bad_code")
+
+
+def test_generate_and_verify_oauth_state():
+    """Verifies that generated state nonces have sufficient entropy and verify cleanly."""
+    from schemasense.auth import (
+        generate_oauth_state,
+        verify_oauth_state,
+    )
+
+    s1 = generate_oauth_state("google")
+    s2 = generate_oauth_state("google")
+    assert s1.startswith("google_")
+    assert s2.startswith("google_")
+    assert s1 != s2  # Unguessable random nonces
+
+    # Verification checks
+    assert verify_oauth_state(s1, s1) is True
+    assert verify_oauth_state(s1, s2) is False
+    assert verify_oauth_state(s1, None) is False
+    assert verify_oauth_state(None, s1) is False
+    assert verify_oauth_state("", s1) is False
+
+
+def test_exchange_oauth_code_state_validation(monkeypatch):
+    """Verifies fail-closed OAuth CSRF protection when expected_state does not match callback."""
+    from schemasense.auth import OAuthStateError
+
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-google-secret")
+
+    # Mismatched state must raise OAuthStateError
+    with pytest.raises(OAuthStateError, match="state validation failed"):
+        exchange_oauth_code(
+            code="code123",
+            state="google_attacker_state",
+            expected_state="google_legitimate_session_state",
+        )
+
+    # Missing state when expected must raise OAuthStateError
+    with pytest.raises(OAuthStateError, match="state validation failed"):
+        exchange_oauth_code(
+            code="code123",
+            state=None,
+            expected_state="google_legitimate_session_state",
+        )
+
+    # Matching state succeeds and routes to provider
+    with patch(
+        "schemasense.auth.exchange_google_code",
+        return_value={"provider": "Google", "name": "Verified Operator"},
+    ):
+        result = exchange_oauth_code(
+            code="valid_code",
+            state="google_valid_nonce",
+            expected_state="google_valid_nonce",
+        )
+        assert result["name"] == "Verified Operator"

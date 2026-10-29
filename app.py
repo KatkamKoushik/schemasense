@@ -649,8 +649,19 @@ if hasattr(st, "query_params") and "code" in st.query_params:
     try:
         from schemasense.auth import exchange_oauth_code
 
+        expected_state = None
+        if str(oauth_state).startswith("google_"):
+            expected_state = st.session_state.pop("google_oauth_state", None)
+        elif str(oauth_state).startswith("github_"):
+            expected_state = st.session_state.pop("github_oauth_state", None)
+        else:
+            expected_state = st.session_state.pop("oauth_state", None)
+
         with st.spinner("Authenticating enterprise SSO session..."):
-            user_data = exchange_oauth_code(code=oauth_code, state=oauth_state)
+            user_data = exchange_oauth_code(
+                code=oauth_code, state=oauth_state, expected_state=expected_state
+            )
+
             st.session_state.authenticated = True
             st.session_state.session_locked = False
             st.session_state.auth_user = user_data["name"]
@@ -678,19 +689,33 @@ if hasattr(st, "user") and getattr(st.user, "is_logged_in", False):
 
 def resolve_enterprise_identity() -> tuple[bool, str, str]:
     """Inspects reverse-proxy headers (OIDC, Cloudflare, ALB), OAuth session, or access key."""
-    # 1. Reverse-proxy / Identity-Aware Proxy (IAP) headers
-    headers = {}
-    if hasattr(st, "context") and hasattr(st.context, "headers"):
-        headers = st.context.headers or {}
+    # 1. Reverse-proxy / Identity-Aware Proxy (IAP) headers (gated behind explicit trust configuration)
+    trust_proxy = os.getenv("SCHEMASENSE_TRUST_PROXY_HEADERS", "").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    if not trust_proxy and hasattr(st, "secrets"):
+        try:
+            trust_proxy = bool(
+                st.secrets.get("auth", {}).get("trust_proxy_headers", False)
+            )
+        except Exception:  # noqa: BLE001
+            trust_proxy = False
 
-    for h_name in (
-        "x-forwarded-user",
-        "cf-access-authenticated-user-email",
-        "x-auth-request-email",
-        "x-remote-user",
-    ):
-        if h_val := headers.get(h_name):
-            return True, h_val, "Trusted OIDC / Reverse Proxy"
+    if trust_proxy:
+        headers = {}
+        if hasattr(st, "context") and hasattr(st.context, "headers"):
+            headers = st.context.headers or {}
+
+        for h_name in (
+            "x-forwarded-user",
+            "cf-access-authenticated-user-email",
+            "x-auth-request-email",
+            "x-remote-user",
+        ):
+            if h_val := headers.get(h_name):
+                return True, h_val, "Trusted OIDC / Reverse Proxy"
 
     # 2. Check explicit session state (from OAuth or Security Key)
     if st.session_state.get("authenticated", False):
@@ -727,12 +752,37 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
     if configured_key or is_mandatory:
         return False, "", "Authentication Required"
 
+    # Production Startup Fail-Closed Guard (GAP-06)
+    is_prod = (
+        os.getenv("SCHEMASENSE_ENV", "").lower() == "production"
+        or os.getenv("ENVIRONMENT", "").lower() == "production"
+    )
+    if is_prod:
+        from schemasense.auth import is_oauth_configured
+
+        if not (is_oauth_configured() or configured_key or trust_proxy or is_mandatory):
+            return (
+                False,
+                "",
+                "Production Misconfiguration: No authentication configured",
+            )
+        return False, "", "Authentication Required"
+
     # Default to Local Operator in evaluation mode
     return True, "Local Operator", "Evaluation Mode (Local)"
 
 
 is_auth, auth_user, auth_mech = resolve_enterprise_identity()
 if not is_auth:
+    if "Production Misconfiguration" in auth_mech:
+        st.error(
+            "CRITICAL SECURITY CONFIGURATION ERROR: SchemaSense is running in production mode "
+            "(SCHEMASENSE_ENV=production) without any authentication mechanism configured. "
+            "Configure OAuth (Google/GitHub), an Access Key (SCHEMASENSE_ACCESS_KEY), or "
+            "enable trusted proxy headers (SCHEMASENSE_TRUST_PROXY_HEADERS=true). Startup halted."
+        )
+        st.stop()
+
     from schemasense.auth import (
         get_github_auth_url,
         get_github_config,
@@ -769,8 +819,12 @@ if not is_auth:
         google_cfg = get_google_config()
         github_cfg = get_github_config()
 
+        from schemasense.auth import generate_oauth_state
+
         if google_cfg:
-            g_url = get_google_auth_url()
+            if "google_oauth_state" not in st.session_state:
+                st.session_state.google_oauth_state = generate_oauth_state("google")
+            g_url = get_google_auth_url(state=st.session_state.google_oauth_state)
             if g_url:
                 st.link_button(
                     "Sign in with Google",
@@ -779,7 +833,9 @@ if not is_auth:
                 )
 
         if github_cfg:
-            gh_url = get_github_auth_url()
+            if "github_oauth_state" not in st.session_state:
+                st.session_state.github_oauth_state = generate_oauth_state("github")
+            gh_url = get_github_auth_url(state=st.session_state.github_oauth_state)
             if gh_url:
                 st.link_button(
                     "Sign in with GitHub",

@@ -66,12 +66,18 @@ In enterprise deployments behind an identity-aware proxy (e.g., Cloudflare Acces
 Operators can authenticate via standard OAuth 2.0 authorization code flow with state validation and cryptographic nonces.
 
 ### C. Enterprise Security Key Gate
-When running in standalone mode, setting `SCHEMASENSE_ACCESS_KEY` locks the entire application behind a security key challenge form.
+When running in standalone mode, setting `SCHEMASENSE_ACCESS_KEY` locks the entire application behind a security key challenge form. Evaluation mode cannot bypass a configured access key.
 
-### D. Production Fail-Closed Policy
-In production (`SCHEMASENSE_ENV=production`), SchemaSense fails closed:
+### D. Local Evaluation Mode (Explicit Opt-In)
+- Local evaluation requires `SCHEMASENSE_ENABLE_LOCAL_EVALUATION=true` (or `1`, `yes`).
+- It defaults to disabled (fail-closed).
+- If enabled, permits local development under the `Local Operator` persona.
+- Production environments strictly prohibit local evaluation.
+
+### E. Production Fail-Closed Policy
+In production (`SCHEMASENSE_ENV=production` or `ENVIRONMENT=production`), SchemaSense fails closed:
 - If neither OAuth nor `SCHEMASENSE_ACCESS_KEY` is configured, application startup halts with a critical security error.
-- Evaluation mode bypass buttons are completely hidden.
+- Evaluation mode bypass buttons and flows are completely disabled.
 
 ---
 

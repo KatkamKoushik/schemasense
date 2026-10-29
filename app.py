@@ -717,8 +717,21 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
             if h_val := headers.get(h_name):
                 return True, h_val, "Trusted OIDC / Reverse Proxy"
 
-    # 2. Check explicit session state (from OAuth or Security Key)
+    # 2. Check explicit session state (from OAuth, Security Key, or Local Operator)
     if st.session_state.get("authenticated", False):
+        auth_method = st.session_state.get("auth_method", "")
+        if auth_method == "Evaluation Mode (Local)":
+            from schemasense.auth import is_local_evaluation_permitted
+
+            if not is_local_evaluation_permitted():
+                # Policy changed or session invalid; revoke immediately (fail-closed)
+                st.session_state.authenticated = False
+                st.session_state.session_locked = True
+                st.session_state.pop("auth_user", None)
+                st.session_state.pop("auth_method", None)
+                st.session_state.pop("auth_email", None)
+                st.session_state.pop("auth_avatar", None)
+                return False, "", "Authentication Required"
         user = st.session_state.get("auth_user", "Authorized Operator")
         method = st.session_state.get("auth_method", "Authenticated Session")
         return True, user, method
@@ -753,11 +766,12 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
         return False, "", "Authentication Required"
 
     # Production Startup Fail-Closed Guard (GAP-06)
-    is_prod = (
-        os.getenv("SCHEMASENSE_ENV", "").lower() == "production"
-        or os.getenv("ENVIRONMENT", "").lower() == "production"
+    from schemasense.auth import (
+        is_local_evaluation_permitted,
+        is_production_environment,
     )
-    if is_prod:
+
+    if is_production_environment():
         from schemasense.auth import is_oauth_configured
 
         if not (is_oauth_configured() or configured_key or trust_proxy or is_mandatory):
@@ -768,8 +782,11 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
             )
         return False, "", "Authentication Required"
 
-    # Default to Local Operator in evaluation mode
-    return True, "Local Operator", "Evaluation Mode (Local)"
+    # 5. Local Evaluation Mode (must be explicitly opted into via SCHEMASENSE_ENABLE_LOCAL_EVALUATION)
+    if is_local_evaluation_permitted():
+        return True, "Local Operator", "Evaluation Mode (Local)"
+
+    return False, "", "Authentication Required"
 
 
 is_auth, auth_user, auth_mech = resolve_enterprise_identity()
@@ -883,11 +900,12 @@ if not is_auth:
                 else:
                     st.error("Access Denied: Invalid Security Key.")
 
-        is_prod_env = (
-            os.getenv("SCHEMASENSE_ENV", "").lower() == "production"
-            or os.getenv("ENVIRONMENT", "").lower() == "production"
+        from schemasense.auth import (
+            is_local_evaluation_permitted,
+            is_production_environment,
         )
-        if not is_prod_env:
+
+        if is_local_evaluation_permitted():
             if st.button(
                 "Continue as Local Operator (Evaluation Mode)",
                 use_container_width=True,
@@ -896,7 +914,17 @@ if not is_auth:
                 st.session_state.authenticated = True
                 st.session_state.auth_user = "Local Operator"
                 st.session_state.auth_method = "Evaluation Mode (Local)"
+                st.session_state.pop("auth_email", None)
+                st.session_state.pop("auth_avatar", None)
                 st.rerun()
+        elif not is_production_environment() and not (
+            os.getenv("SCHEMASENSE_ACCESS_KEY") or os.getenv("SCHEMASENSE_AUTH_KEY")
+        ):
+            st.info(
+                "Local evaluation mode is disabled by default. "
+                "To enable local evaluation without credentials, set "
+                "`SCHEMASENSE_ENABLE_LOCAL_EVALUATION=true` in your development environment."
+            )
 
         st.markdown(
             """
@@ -912,6 +940,7 @@ if not is_auth:
         )
     st.stop()
 
+st.session_state.authenticated = True
 st.session_state.auth_user = auth_user
 st.session_state.auth_method = auth_mech
 
@@ -933,28 +962,41 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    import html
+
     # Operator Session Identity & Sign In Gate
     auth_user_display = st.session_state.get("auth_user", "Local Operator")
     auth_method_display = st.session_state.get("auth_method", "Evaluation Mode (Local)")
     auth_email_display = st.session_state.get("auth_email", "")
     is_eval_mode = auth_method_display == "Evaluation Mode (Local)"
 
+    # Safely escape text to protect against XSS and HTML injection
+    safe_user = html.escape(str(auth_user_display))
+    safe_method = html.escape(str(auth_method_display))
+    safe_email = html.escape(str(auth_email_display)) if auth_email_display else ""
+
     avatar_prefix = ""
-    if st.session_state.get("auth_avatar"):
-        avatar_prefix = f'<img src="{st.session_state.auth_avatar}" style="width:22px; height:22px; border-radius:50%; margin-right:6px; vertical-align:middle; border:1px solid var(--border-active);" alt="Avatar" />'
+    raw_avatar = st.session_state.get("auth_avatar")
+    if (
+        raw_avatar
+        and isinstance(raw_avatar, str)
+        and (raw_avatar.startswith("https://") or raw_avatar.startswith("http://"))
+    ):
+        safe_avatar = html.escape(raw_avatar, quote=True)
+        avatar_prefix = f'<img src="{safe_avatar}" style="width:22px; height:22px; border-radius:50%; margin-right:6px; vertical-align:middle; border:1px solid var(--border-active);" alt="Avatar" />'
 
     email_html = (
-        f'<div style="font-size:0.68rem; color:var(--text-muted); margin-top:1px;">{auth_email_display}</div>'
-        if auth_email_display
+        f'<div style="font-size:0.68rem; color:var(--text-muted); margin-top:1px;">{safe_email}</div>'
+        if safe_email
         else ""
     )
 
     card_html = (
         '<div style="background: rgba(148, 163, 184, 0.05); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.55rem 0.7rem; margin-bottom: 0.75rem;">'
         "<div style=\"font-family:'JetBrains Mono',monospace; font-size:0.65rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.2rem;\">Operator Identity</div>"
-        f'<div style="font-size:0.82rem; font-weight:700; color:var(--text-primary); display:flex; align-items:center;">{avatar_prefix}<span>{auth_user_display}</span></div>'
+        f'<div style="font-size:0.82rem; font-weight:700; color:var(--text-primary); display:flex; align-items:center;">{avatar_prefix}<span>{safe_user}</span></div>'
         f"{email_html}"
-        f'<div style="font-size:0.68rem; color:var(--text-secondary); margin-top:0.2rem;">{auth_method_display}</div>'
+        f'<div style="font-size:0.68rem; color:var(--text-secondary); margin-top:0.2rem;">{safe_method}</div>'
         "</div>"
     )
     st.markdown(card_html, unsafe_allow_html=True)

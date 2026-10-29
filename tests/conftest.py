@@ -62,3 +62,9 @@ def sqlite_engine():
 
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def default_local_eval_env(monkeypatch):
+    """Enables local evaluation by default for test execution unless explicitly overridden."""
+    monkeypatch.setenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "true")

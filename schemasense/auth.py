@@ -346,3 +346,87 @@ def exchange_oauth_code(
         return exchange_github_code(code, redirect_uri)
 
     raise ValueError("Neither Google nor GitHub OAuth credentials are configured.")
+
+
+def is_production_environment(
+    schemasense_env: Optional[str] = None,
+    environment: Optional[str] = None,
+) -> bool:
+    """Checks whether the environment indicates production.
+
+    Fail-closed invariant: If either SCHEMASENSE_ENV or ENVIRONMENT indicates
+    production (case-insensitive 'production' or 'prod'), the environment is
+    strictly treated as production. Conflicting values (e.g. one development,
+    one production) resolve safely to production.
+    """
+    if schemasense_env is None:
+        schemasense_env = os.getenv("SCHEMASENSE_ENV", "")
+        if not schemasense_env:
+            schemasense_env = str(get_secret(["general", "environment"], "") or "")
+
+    if environment is None:
+        environment = os.getenv("ENVIRONMENT", "")
+
+    s_env = (schemasense_env or "").strip().lower()
+    e_env = (environment or "").strip().lower()
+
+    prod_tokens = {"production", "prod"}
+    return s_env in prod_tokens or e_env in prod_tokens
+
+
+def is_local_evaluation_permitted(
+    *,
+    enable_eval: Optional[Any] = None,
+    schemasense_env: Optional[str] = None,
+    environment: Optional[str] = None,
+    access_key: Optional[str] = None,
+    require_auth: Optional[Any] = None,
+) -> bool:
+    """Determines whether the local-operator evaluation mode bypass is permitted.
+
+    Required security safeguards:
+    1. Production guard: Production environments must NEVER permit the local
+       evaluation bypass, regardless of opt-in configuration.
+    2. Authentication requirement guard: A configured SCHEMASENSE_ACCESS_KEY,
+       SCHEMASENSE_AUTH_KEY, or SCHEMASENSE_REQUIRE_AUTH must not be bypassed.
+    3. Explicit opt-in: Local evaluation must be explicitly enabled via
+       SCHEMASENSE_ENABLE_LOCAL_EVALUATION ('true', '1', 'yes'). Defaults to False.
+    4. Fail-closed: Missing, invalid, or ambiguous configurations evaluate to False.
+    """
+    # 1. Production must never permit the evaluation bypass
+    if is_production_environment(
+        schemasense_env=schemasense_env, environment=environment
+    ):
+        return False
+
+    # 2. Configured access key or mandatory auth must not be bypassed
+    if access_key is None:
+        access_key = os.getenv("SCHEMASENSE_ACCESS_KEY") or os.getenv(
+            "SCHEMASENSE_AUTH_KEY"
+        )
+        if not access_key:
+            access_key = str(get_secret(["auth", "access_token"], "") or "")
+    if (access_key or "").strip():
+        return False
+
+    if require_auth is None:
+        require_auth = os.getenv("SCHEMASENSE_REQUIRE_AUTH", "")
+        if not require_auth:
+            require_auth = get_secret(["auth", "require_auth"], False)
+    if isinstance(require_auth, bool):
+        if require_auth:
+            return False
+    elif str(require_auth).strip().lower() in ("true", "1", "yes"):
+        return False
+
+    # 3. Explicit opt-in check (fails closed on missing, invalid, or ambiguous values)
+    if enable_eval is None:
+        enable_eval = os.getenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "")
+        if not enable_eval:
+            enable_eval = get_secret(["auth", "enable_local_evaluation"], False)
+
+    if isinstance(enable_eval, bool):
+        return enable_eval
+
+    clean_eval = str(enable_eval).strip().lower()
+    return clean_eval in ("true", "1", "yes")

@@ -717,8 +717,21 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
             if h_val := headers.get(h_name):
                 return True, h_val, "Trusted OIDC / Reverse Proxy"
 
-    # 2. Check explicit session state (from OAuth or Security Key)
+    # 2. Check explicit session state (from OAuth, Security Key, or Local Operator)
     if st.session_state.get("authenticated", False):
+        auth_method = st.session_state.get("auth_method", "")
+        if auth_method == "Evaluation Mode (Local)":
+            from schemasense.auth import is_local_evaluation_permitted
+
+            if not is_local_evaluation_permitted():
+                # Policy changed or session invalid; revoke immediately (fail-closed)
+                st.session_state.authenticated = False
+                st.session_state.session_locked = True
+                st.session_state.pop("auth_user", None)
+                st.session_state.pop("auth_method", None)
+                st.session_state.pop("auth_email", None)
+                st.session_state.pop("auth_avatar", None)
+                return False, "", "Authentication Required"
         user = st.session_state.get("auth_user", "Authorized Operator")
         method = st.session_state.get("auth_method", "Authenticated Session")
         return True, user, method
@@ -753,11 +766,12 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
         return False, "", "Authentication Required"
 
     # Production Startup Fail-Closed Guard (GAP-06)
-    is_prod = (
-        os.getenv("SCHEMASENSE_ENV", "").lower() == "production"
-        or os.getenv("ENVIRONMENT", "").lower() == "production"
+    from schemasense.auth import (
+        is_local_evaluation_permitted,
+        is_production_environment,
     )
-    if is_prod:
+
+    if is_production_environment():
         from schemasense.auth import is_oauth_configured
 
         if not (is_oauth_configured() or configured_key or trust_proxy or is_mandatory):
@@ -768,8 +782,11 @@ def resolve_enterprise_identity() -> tuple[bool, str, str]:
             )
         return False, "", "Authentication Required"
 
-    # Default to Local Operator in evaluation mode
-    return True, "Local Operator", "Evaluation Mode (Local)"
+    # 5. Local Evaluation Mode (must be explicitly opted into via SCHEMASENSE_ENABLE_LOCAL_EVALUATION)
+    if is_local_evaluation_permitted():
+        return True, "Local Operator", "Evaluation Mode (Local)"
+
+    return False, "", "Authentication Required"
 
 
 is_auth, auth_user, auth_mech = resolve_enterprise_identity()
@@ -883,9 +900,39 @@ if not is_auth:
                 else:
                     st.error("Access Denied: Invalid Security Key.")
 
+        from schemasense.auth import (
+            is_local_evaluation_permitted,
+            is_production_environment,
+        )
+
+        if is_local_evaluation_permitted():
+            if st.button(
+                "Continue as Local Operator (Evaluation Mode)",
+                use_container_width=True,
+            ):
+                st.session_state.session_locked = False
+                st.session_state.authenticated = True
+                st.session_state.auth_user = "Local Operator"
+                st.session_state.auth_method = "Evaluation Mode (Local)"
+                st.session_state.pop("auth_email", None)
+                st.session_state.pop("auth_avatar", None)
+                st.rerun()
+        elif not is_production_environment() and not (
+            os.getenv("SCHEMASENSE_ACCESS_KEY") or os.getenv("SCHEMASENSE_AUTH_KEY")
+        ):
+            st.info(
+                "Local evaluation mode is disabled by default. "
+                "To enable local evaluation without credentials, set "
+                "`SCHEMASENSE_ENABLE_LOCAL_EVALUATION=true` in your development environment."
+            )
+
         st.markdown(
             """
-            <div style="text-align: center; margin-top: 1.5rem; font-size: 0.72rem; color: var(--text-muted);">
+            <div style="text-align: center; margin-top: 1.25rem; font-size: 0.74rem; color: var(--text-muted); line-height: 1.5;">
+                <span style="font-weight: 600;">Sign Up & SSO Provisioning:</span><br/>
+                New team members signing in via Google Workspace or GitHub are automatically provisioned. Dedicated self-registration forms are disabled for enterprise database security.
+            </div>
+            <div style="text-align: center; margin-top: 0.75rem; font-size: 0.72rem; color: var(--text-muted);">
                 OAuth 2.0 SSO Active • AST SQLGuard Protected • Least-Privilege Enforced
             </div>
             """,
@@ -893,6 +940,7 @@ if not is_auth:
         )
     st.stop()
 
+st.session_state.authenticated = True
 st.session_state.auth_user = auth_user
 st.session_state.auth_method = auth_mech
 
@@ -913,6 +961,116 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
+
+    import html
+
+    # Operator Session Identity & Sign In Gate
+    auth_user_display = st.session_state.get("auth_user", "Local Operator")
+    auth_method_display = st.session_state.get("auth_method", "Evaluation Mode (Local)")
+    auth_email_display = st.session_state.get("auth_email", "")
+    is_eval_mode = auth_method_display == "Evaluation Mode (Local)"
+
+    # Safely escape text to protect against XSS and HTML injection
+    safe_user = html.escape(str(auth_user_display))
+    safe_method = html.escape(str(auth_method_display))
+    safe_email = html.escape(str(auth_email_display)) if auth_email_display else ""
+
+    avatar_prefix = ""
+    raw_avatar = st.session_state.get("auth_avatar")
+    if (
+        raw_avatar
+        and isinstance(raw_avatar, str)
+        and (raw_avatar.startswith("https://") or raw_avatar.startswith("http://"))
+    ):
+        safe_avatar = html.escape(raw_avatar, quote=True)
+        avatar_prefix = f'<img src="{safe_avatar}" style="width:22px; height:22px; border-radius:50%; margin-right:6px; vertical-align:middle; border:1px solid var(--border-active);" alt="Avatar" />'
+
+    email_html = (
+        f'<div style="font-size:0.68rem; color:var(--text-muted); margin-top:1px;">{safe_email}</div>'
+        if safe_email
+        else ""
+    )
+
+    card_html = (
+        '<div style="background: rgba(148, 163, 184, 0.05); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.55rem 0.7rem; margin-bottom: 0.75rem;">'
+        "<div style=\"font-family:'JetBrains Mono',monospace; font-size:0.65rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.2rem;\">Operator Identity</div>"
+        f'<div style="font-size:0.82rem; font-weight:700; color:var(--text-primary); display:flex; align-items:center;">{avatar_prefix}<span>{safe_user}</span></div>'
+        f"{email_html}"
+        f'<div style="font-size:0.68rem; color:var(--text-secondary); margin-top:0.2rem;">{safe_method}</div>'
+        "</div>"
+    )
+    st.markdown(card_html, unsafe_allow_html=True)
+
+    if is_eval_mode:
+        with st.expander("Sign In / Identity Gate", expanded=True):
+            from schemasense.auth import (
+                get_github_auth_url,
+                get_github_config,
+                get_google_auth_url,
+                get_google_config,
+            )
+
+            google_cfg = get_google_config()
+            github_cfg = get_github_config()
+
+            if google_cfg:
+                g_url = get_google_auth_url()
+                if g_url:
+                    st.link_button(
+                        "Sign in with Google", g_url, use_container_width=True
+                    )
+
+            if github_cfg:
+                gh_url = get_github_auth_url()
+                if gh_url:
+                    st.link_button(
+                        "Sign in with GitHub", gh_url, use_container_width=True
+                    )
+
+            if st.button("Lock Console / Open Login Gate", use_container_width=True):
+                st.session_state.authenticated = False
+                st.session_state.session_locked = True
+                st.session_state.pop("auth_user", None)
+                st.session_state.pop("auth_email", None)
+                st.session_state.pop("auth_method", None)
+                st.session_state.pop("auth_avatar", None)
+                st.rerun()
+    else:
+        if st.button("Sign Out / Lock Session", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.session_locked = True
+            st.session_state.pop("auth_user", None)
+            st.session_state.pop("auth_email", None)
+            st.session_state.pop("auth_method", None)
+            st.session_state.pop("auth_avatar", None)
+            st.rerun()
+
+        with st.expander("Switch Account / SSO Options", expanded=False):
+            from schemasense.auth import (
+                get_github_auth_url,
+                get_github_config,
+                get_google_auth_url,
+                get_google_config,
+            )
+
+            google_cfg = get_google_config()
+            github_cfg = get_github_config()
+
+            if google_cfg:
+                g_url = get_google_auth_url()
+                if g_url:
+                    st.link_button(
+                        "Sign in with another Google Account",
+                        g_url,
+                        use_container_width=True,
+                    )
+
+            if github_cfg:
+                gh_url = get_github_auth_url()
+                if gh_url:
+                    st.link_button(
+                        "Switch to GitHub Account", gh_url, use_container_width=True
+                    )
 
     # UI Theme Palette Switcher
     st.markdown(
@@ -1596,69 +1754,6 @@ with st.sidebar:
                     st.session_state.business_rules = []
                     st.rerun()
 
-        st.markdown(
-            "<div style=\"font-family:'JetBrains Mono',monospace; font-size:0.68rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.06em; margin-top:0.6rem; margin-bottom:0.1rem;\">Security & Access Gate</div>",
-            unsafe_allow_html=True,
-        )
-        with st.expander("Session Identity", expanded=False):
-            avatar_html = ""
-            if st.session_state.get("auth_avatar"):
-                avatar_html = f'<img src="{st.session_state.auth_avatar}" style="width:36px; height:36px; border-radius:50%; margin-bottom:8px; border:1px solid var(--border-active);" alt="Avatar" /><br/>'
-
-            email_html = (
-                f"<div><strong>Email:</strong> {st.session_state.auth_email}</div>"
-                if st.session_state.get("auth_email")
-                else ""
-            )
-
-            st.markdown(
-                f"""
-                <div style="font-size:0.75rem; color:var(--text-secondary);">
-                    {avatar_html}
-                    <div><strong>Operator:</strong> {st.session_state.auth_user}</div>
-                    {email_html}
-                    <div><strong>Gateway:</strong> {st.session_state.auth_method}</div>
-                    <div style="margin-top:6px; font-size:0.7rem; color:var(--text-muted);">
-                        Protected by enterprise SSO and AST guardrails. See docs/security/access-control.md.
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # If not yet authenticated via OAuth, offer quick SSO login buttons in sidebar
-            if (
-                not st.session_state.get("authenticated", False)
-                or st.session_state.get("auth_method") == "Evaluation Mode (Local)"
-            ):
-                from schemasense.auth import (
-                    get_github_auth_url,
-                    get_google_auth_url,
-                )
-
-                g_url = get_google_auth_url()
-                if g_url:
-                    st.link_button(
-                        "Sign in with Google", g_url, use_container_width=True
-                    )
-                gh_url = get_github_auth_url()
-                if gh_url:
-                    st.link_button(
-                        "Sign in with GitHub", gh_url, use_container_width=True
-                    )
-
-            if st.button("Lock Console Session / Sign Out", use_container_width=True):
-                st.session_state.authenticated = False
-                st.session_state.session_locked = True
-                st.session_state.pop("auth_user", None)
-                st.session_state.pop("auth_email", None)
-                st.session_state.pop("auth_method", None)
-                st.session_state.pop("auth_avatar", None)
-                st.rerun()
-
-# ──────────────────────────────────────────────
-# MAIN NAVIGATION TABS
-# ──────────────────────────────────────────────
 is_connected = st.session_state.get("db_engine") is not None
 priv_report: AccountPrivilegeReport | None = st.session_state.get("privilege_report")
 active_mode_select = st.session_state.get(

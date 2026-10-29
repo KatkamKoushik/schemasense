@@ -64,10 +64,12 @@ access_token = "your-secure-enterprise-token-here"
 
 ### Model C: Local Evaluation / Development Sandbox
 
-When no access key is configured and no reverse proxy headers are present:
-- SchemaSense runs in **Evaluation Mode (Local)**.
-- Telemetry indicators prominently display `Operator: Local Operator (Evaluation Mode)`.
-- No database credentials or schemas can leave the host unless an external database connection is explicitly configured by the local user.
+For local development and evaluation without federated SSO or access tokens:
+- **Explicit Opt-In Required**: Local evaluation requires `SCHEMASENSE_ENABLE_LOCAL_EVALUATION=true` (or `1`/`yes`). It defaults to disabled (fail-closed).
+- **Production Guard**: If `SCHEMASENSE_ENV` or `ENVIRONMENT` indicates production, local evaluation is strictly blocked and cannot be enabled by opt-in.
+- **Access Key Guard**: If `SCHEMASENSE_ACCESS_KEY` is configured, the evaluation bypass is disabled; key authentication must be provided.
+- **Identity & Indicators**: When permitted and active, telemetry and the Operator Identity card prominently display `Local Operator` with gateway `Evaluation Mode (Local)`.
+- **Locking & Revocation**: Clicking **Lock Console / Open Login Gate** immediately revokes the session and clears all cached operator state.
 
 ---
 

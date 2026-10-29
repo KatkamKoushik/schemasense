@@ -205,3 +205,220 @@ def test_ui_production_fail_closed_without_auth(monkeypatch):
 
     # In production without auth, an error must be displayed and execution stopped
     assert any("CRITICAL SECURITY CONFIGURATION ERROR" in e.value for e in at.error)
+
+
+def test_ui_evaluation_disabled_by_default(monkeypatch):
+    """Verifies that missing or unset SCHEMASENSE_ENABLE_LOCAL_EVALUATION fails closed,
+    leaving the user at the login gate without an evaluation bypass button and displaying
+    an informative message explaining how to enable local evaluation."""
+    monkeypatch.delenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", raising=False)
+    monkeypatch.delenv("SCHEMASENSE_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("SCHEMASENSE_ENV", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    at.run()
+    assert not at.exception
+    assert (
+        "authenticated" not in at.session_state
+        or at.session_state["authenticated"] is False
+    )
+    # No evaluation bypass button may be shown
+    assert not any("Continue as Local Operator" in b.label for b in at.button)
+    # The login gate headline is present
+    assert any("SchemaSense Enterprise Gateway" in m.value for m in at.markdown)
+    # Informative message for disabled evaluation mode is displayed
+    assert any("Local evaluation mode is disabled" in inf.value for inf in at.info)
+
+
+def test_ui_access_key_cannot_be_bypassed_by_evaluation_mode(monkeypatch):
+    """Verifies that a configured SCHEMASENSE_ACCESS_KEY takes precedence over evaluation mode,
+    hiding the bypass button and requiring key authentication."""
+    monkeypatch.setenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "true")
+    monkeypatch.setenv("SCHEMASENSE_ENV", "development")
+    monkeypatch.setenv("SCHEMASENSE_ACCESS_KEY", "super-secret-enterprise-token")
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    at.run()
+    assert not at.exception
+    assert (
+        "authenticated" not in at.session_state
+        or at.session_state["authenticated"] is False
+    )
+
+    # The evaluation bypass button must NOT be present
+    assert not any("Continue as Local Operator" in b.label for b in at.button)
+    # Key input form must be present
+    assert any("Enterprise Security Key" in t.label for t in at.text_input)
+
+
+def test_ui_local_operator_evaluation_unlock_and_lock_cycle(monkeypatch):
+    """Verifies that when explicitly opted into local evaluation, locking the console
+    renders the evaluation button, clicking it unlocks and sets session identity, and
+    locking again safely revokes credentials and clears stale identity data."""
+    monkeypatch.setenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "true")
+    monkeypatch.setenv("SCHEMASENSE_ENV", "development")
+    monkeypatch.delenv("SCHEMASENSE_ACCESS_KEY", raising=False)
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    at.run()
+    assert not at.exception
+    assert at.session_state.authenticated is True
+
+    # Engage session lock from sidebar
+    lock_btn = next(
+        (b for b in at.sidebar.button if "Lock Console / Open Login Gate" in b.label),
+        None,
+    )
+    assert lock_btn is not None
+    lock_btn.click()
+    at.run()
+    assert not at.exception
+    assert (
+        "authenticated" not in at.session_state
+        or at.session_state["authenticated"] is False
+    )
+    assert at.session_state.session_locked is True
+
+    # Evaluation button is visible on locked gate because policy permits it
+    eval_btn = next(
+        (b for b in at.button if "Continue as Local Operator" in b.label), None
+    )
+    assert eval_btn is not None
+
+    # Click evaluation button to unlock
+    eval_btn.click()
+    at.run()
+    assert not at.exception
+    assert at.session_state.authenticated is True
+    assert at.session_state.session_locked is False
+    assert at.session_state.auth_user == "Local Operator"
+    assert at.session_state.auth_method == "Evaluation Mode (Local)"
+
+    # Verify Operator Identity card in sidebar
+    sidebar_md_values = [m.value for m in at.sidebar.markdown]
+    assert any(
+        "Operator Identity" in v and "Local Operator" in v for v in sidebar_md_values
+    )
+    assert any("Evaluation Mode (Local)" in v for v in sidebar_md_values)
+
+
+def test_ui_evaluation_blocked_in_production(monkeypatch):
+    """Verifies that in production mode, even with explicit opt-in, the evaluation button is completely hidden."""
+    monkeypatch.setenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "true")
+    monkeypatch.setenv("SCHEMASENSE_ENV", "production")
+    monkeypatch.setenv("SCHEMASENSE_ACCESS_KEY", "prod-key-999")
+
+    at_prod = AppTest.from_file(APP_PATH, default_timeout=20)
+    at_prod.run()
+    assert not at_prod.exception
+    assert not any("Continue as Local Operator" in b.label for b in at_prod.button)
+
+
+def test_ui_operator_identity_card_escapes_xss(monkeypatch):
+    """Verifies that malicious or special characters in operator identity are escaped safely."""
+    monkeypatch.setenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "true")
+    monkeypatch.setenv("SCHEMASENSE_ENV", "development")
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    at.session_state["authenticated"] = True
+    at.session_state["auth_user"] = "<script>alert('xss')</script>"
+    at.session_state["auth_email"] = "attacker&gt;<script>@example.com"
+    at.session_state["auth_method"] = "<b>Malicious Method</b>"
+    at.session_state["auth_avatar"] = "javascript:alert(1)"
+    at.run()
+    assert not at.exception
+
+    sidebar_md = [m.value for m in at.sidebar.markdown]
+    card_value = next((v for v in sidebar_md if "Operator Identity" in v), None)
+    assert card_value is not None
+
+    # Verify raw script / markup is not injected directly
+    assert "<script>" not in card_value
+    assert "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;" in card_value
+    assert "&lt;b&gt;Malicious Method&lt;/b&gt;" in card_value
+    # Unsafe avatar scheme javascript: must not be rendered in an img tag
+    assert 'src="javascript:' not in card_value
+
+
+def test_ui_rerun_after_locking_preserves_locked_state(monkeypatch):
+    """Verifies that locking the console survives subsequent Streamlit reruns/interactions
+    and never restores authentication automatically without explicit re-auth."""
+    monkeypatch.setenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "true")
+    monkeypatch.setenv("SCHEMASENSE_ENV", "development")
+    monkeypatch.delenv("SCHEMASENSE_ACCESS_KEY", raising=False)
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    at.run()
+    assert not at.exception
+    assert at.session_state.authenticated is True
+
+    # Lock the console
+    lock_btn = next(
+        (b for b in at.sidebar.button if "Lock Console / Open Login Gate" in b.label),
+        None,
+    )
+    assert lock_btn is not None
+    lock_btn.click()
+    at.run()
+    assert not at.exception
+    assert (
+        "authenticated" not in at.session_state
+        or at.session_state["authenticated"] is False
+    )
+    assert at.session_state.session_locked is True
+
+    # Trigger another rerun (simulating tab switch, query param change, or refresh)
+    at.run()
+    assert not at.exception
+    # Must remain locked and unauthenticated
+    assert (
+        "authenticated" not in at.session_state
+        or at.session_state["authenticated"] is False
+    )
+    assert at.session_state.session_locked is True
+    # Normal console sidebar elements remain unrendered
+    assert not any("Database Engine" in s.label for s in at.sidebar.selectbox)
+
+
+def test_ui_switching_from_evaluation_to_oauth_clears_local_operator(monkeypatch):
+    """Verifies that when an authenticated evaluation session exists, subsequent
+    OAuth authentication replaces local operator credentials with OAuth identity."""
+    from unittest.mock import patch
+
+    monkeypatch.setenv("SCHEMASENSE_ENABLE_LOCAL_EVALUATION", "true")
+    monkeypatch.setenv("SCHEMASENSE_ENV", "development")
+    monkeypatch.delenv("SCHEMASENSE_ACCESS_KEY", raising=False)
+
+    at = AppTest.from_file(APP_PATH, default_timeout=20)
+    # Start in evaluation mode
+    at.session_state["authenticated"] = True
+    at.session_state["auth_user"] = "Local Operator"
+    at.session_state["auth_method"] = "Evaluation Mode (Local)"
+    at.run()
+    assert not at.exception
+    assert at.session_state.auth_user == "Local Operator"
+
+    # Simulate incoming OAuth callback in query parameters
+    at.query_params["code"] = "valid_oauth_test_code"
+    at.query_params["state"] = "google_test_state"
+    at.session_state["google_oauth_state"] = "google_test_state"
+
+    mock_oauth_user = {
+        "name": "Jane Enterprise",
+        "email": "jane@enterprise.corp",
+        "auth_method": "Google OAuth 2.0",
+        "avatar_url": "https://lh3.googleusercontent.com/avatar_jane.png",
+    }
+    with patch("schemasense.auth.exchange_oauth_code", return_value=mock_oauth_user):
+        at.run()
+
+    assert not at.exception
+    assert at.session_state.authenticated is True
+    assert at.session_state.auth_user == "Jane Enterprise"
+    assert at.session_state.auth_email == "jane@enterprise.corp"
+    assert at.session_state.auth_method == "Google OAuth 2.0"
+    assert (
+        at.session_state.auth_avatar
+        == "https://lh3.googleusercontent.com/avatar_jane.png"
+    )

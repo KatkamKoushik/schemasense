@@ -30,6 +30,7 @@ def extract_rules_from_pdf(
     Returns:
         list[str]: Extracted paragraphs / rule statements.
     """
+    stream: BinaryIO
     if isinstance(pdf_file, bytes):
         if len(pdf_file) > MAX_PDF_SIZE_BYTES:
             raise PDFIngestionError(

@@ -78,6 +78,14 @@ jobs:
         run: |
           ruff check schemasense/ tests/
 
+      - name: Check code formatting with Ruff
+        run: |
+          ruff format --check schemasense/ tests/ app.py
+
+      - name: Type check with Mypy
+        run: |
+          mypy schemasense --ignore-missing-imports
+
       - name: Compile check
         run: |
           python -m py_compile app.py

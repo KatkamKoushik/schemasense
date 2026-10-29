@@ -9,6 +9,7 @@ import socket
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL
@@ -510,7 +511,7 @@ def create_safe_engine(
         db_type, host, port, db_name, user, password, ssl_mode=ssl_mode
     )
 
-    connect_args = {}
+    connect_args: dict[str, Any] = {}
     if db_type in ("PostgreSQL", "MySQL"):
         connect_args["connect_timeout"] = connect_timeout
     # Pin verified IP address for PostgreSQL to eliminate TOCTOU / DNS rebinding risks
@@ -558,7 +559,7 @@ def create_safe_engine(
 
         # Inspect and attach privilege report
         report = inspect_account_privileges(engine, db_type=db_type)
-        engine._schemasense_privilege_report = report
+        setattr(engine, "_schemasense_privilege_report", report)
 
         if enforce_least_privilege and report.is_privileged:
             dispose_engine(engine)

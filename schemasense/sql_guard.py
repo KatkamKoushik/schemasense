@@ -250,17 +250,17 @@ class SQLGuard:
         # 7. Block unauthorized system catalog schemas and tables
         for ext_table in extracted_tables:
             parts = ext_table.lower().split(".")
-            schema_part = parts[0] if len(parts) > 1 else None
+            ext_schema: str | None = parts[0] if len(parts) > 1 else None
             bare_table = parts[-1]
 
-            if schema_part and schema_part in SYSTEM_SCHEMAS:
+            if ext_schema and ext_schema in SYSTEM_SCHEMAS:
                 allowed_full = (
                     {t.lower() for t in allowed_tables} if allowed_tables else set()
                 )
                 if ext_table.lower() not in allowed_full:
                     return ValidationResult(
                         is_valid=False,
-                        error_message=f"Access to protected system schema '{schema_part}' is strictly forbidden.",
+                        error_message=f"Access to protected system schema '{ext_schema}' is strictly forbidden.",
                         extracted_tables=extracted_tables,
                     )
 

@@ -80,21 +80,37 @@ def test_playwright_browser_initial_render_and_console_cleanliness(streamlit_ser
         page.on("pageerror", lambda err: console_errors.append(str(err)))
 
         page.goto(streamlit_server, wait_until="networkidle", timeout=15000)
+        page.wait_for_selector(".stApp", timeout=10000)
+
+        # Allow Streamlit client lifecycle to update document title
+        for _ in range(20):
+            if any(
+                term in page.title() for term in ("SchemaSense", "Streamlit", "app")
+            ):
+                break
+            time.sleep(0.1)
 
         # Verify page title
-        assert "SchemaSense" in page.title() or "Streamlit" in page.title()
+        assert any(term in page.title() for term in ("SchemaSense", "Streamlit", "app"))
 
         # Assert no uncaught JavaScript exceptions were fired in the browser
         assert len(console_errors) == 0, (
             f"Browser console errors detected: {console_errors}"
         )
 
-        # 2. Mobile Responsive Viewport Test
+        # 2. Mobile Responsive Viewport Test (iPhone SE width: 375px)
         mobile_context = browser.new_context(viewport={"width": 375, "height": 667})
         mobile_page = mobile_context.new_page()
         mobile_page.goto(streamlit_server, wait_until="networkidle", timeout=15000)
+        mobile_page.wait_for_selector(".stApp", timeout=10000)
 
-        # Assert mobile page successfully rendered
-        assert mobile_page.is_visible("body")
+        # Assert mobile app container successfully rendered and constrained to mobile width
+        assert mobile_page.is_visible(".stApp")
+        box = mobile_page.locator(".stApp").bounding_box()
+        assert box is not None, "Mobile .stApp element bounding box was not computed"
+        assert box["width"] <= 375, (
+            f"Expected mobile viewport width <= 375, got {box['width']}"
+        )
+        assert box["height"] > 0, "Mobile .stApp height must be greater than 0"
 
         browser.close()

@@ -293,6 +293,7 @@ class HardwareInspector:
             return None
         except Exception:  # noqa: BLE001
             return None
+        return None
 
     @classmethod
     def _inspect_storage(

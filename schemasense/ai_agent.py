@@ -493,13 +493,15 @@ def get_session_agent(
         else:
             resolved_path = ""
 
-        cache_key = ("llama_cpp", resolved_path)
+        cache_key: tuple[Any, ...] = ("llama_cpp", resolved_path)
         if (
             hasattr(store, "get")
             and store.get("_active_agent_cache_key") == cache_key
             and store.get("_active_agent") is not None
         ):
-            return store.get("_active_agent")
+            res = store.get("_active_agent")
+            if isinstance(res, SchemaSenseAIAgent):
+                return res
 
         # Explicitly close previously cached agent before replacing
         old_agent = store.get("_active_agent") if hasattr(store, "get") else None
@@ -550,7 +552,9 @@ def get_session_agent(
             and store.get("_active_agent_cache_key") == cache_key
             and store.get("_active_agent") is not None
         ):
-            return store.get("_active_agent")
+            res = store.get("_active_agent")
+            if isinstance(res, SchemaSenseAIAgent):
+                return res
 
         old_agent = store.get("_active_agent") if hasattr(store, "get") else None
         if old_agent is not None and hasattr(old_agent, "close"):
@@ -581,9 +585,12 @@ def get_session_agent(
         and store.get("_active_agent") is not None
     ):
         cached_agent = store.get("_active_agent")
+        if not isinstance(cached_agent, SchemaSenseAIAgent):
+            cached_agent = None
         active_idx = store.get("active_key_index", 0) if hasattr(store, "get") else 0
-        cached_agent.active_key_index = active_idx
-        return cached_agent
+        if cached_agent is not None:
+            cached_agent.active_key_index = active_idx
+            return cached_agent
 
     # Explicitly close previous agent native memory when switching to Gemini
     old_agent = store.get("_active_agent") if hasattr(store, "get") else None

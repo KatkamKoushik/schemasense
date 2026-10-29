@@ -388,7 +388,7 @@ def inspect_database_schema(
                     indexes.append(
                         IndexInfo(
                             name=idx_name,
-                            columns=idx_cols,
+                            columns=[c for c in idx_cols if c is not None],
                             unique=bool(idx.get("unique", False)),
                         )
                     )

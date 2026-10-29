@@ -86,7 +86,7 @@ def resolve_redirect_uri(explicit_uri: Optional[str] = None) -> str:
         import streamlit as st
 
         if hasattr(st, "context") and hasattr(st.context, "headers"):
-            headers = st.context.headers or {}
+            headers: dict[str, Any] = dict(st.context.headers or {})
             host = headers.get("x-forwarded-host") or headers.get("host")
             if host:
                 proto = headers.get("x-forwarded-proto")

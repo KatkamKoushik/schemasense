@@ -202,7 +202,18 @@ class SQLGuard:
     ) -> ValidationResult:
         from schemasense import is_native_core_available
 
+        double_lock = (
+            cls.ENFORCE_DOUBLE_LOCK
+            or os.environ.get("SCHEMASENSE_SQLGUARD_DOUBLE_LOCK") == "1"
+        )
+
         if not is_native_core_available():
+            if double_lock:
+                return ValidationResult(
+                    is_valid=False,
+                    error_message="Strict Conjunction Failure: Double-lock validation required, but native SQLGuard core is unavailable.",
+                    extracted_tables=py_result.extracted_tables,
+                )
             return py_result
 
         try:
@@ -231,10 +242,6 @@ class SQLGuard:
                 )
 
             # Strict Conjunction (Stage C Double-Lock)
-            double_lock = (
-                cls.ENFORCE_DOUBLE_LOCK
-                or os.environ.get("SCHEMASENSE_SQLGUARD_DOUBLE_LOCK") == "1"
-            )
             if double_lock and py_result.is_valid and not native_res["is_valid"]:
                 return ValidationResult(
                     is_valid=False,
@@ -243,6 +250,12 @@ class SQLGuard:
                 )
         except Exception as e:  # noqa: BLE001
             logger.debug("Native SQLGuard shadow execution error: %s", e)
+            if double_lock:
+                return ValidationResult(
+                    is_valid=False,
+                    error_message=f"Strict Conjunction Failure: Native SQLGuard error during double-lock validation: {e}",
+                    extracted_tables=py_result.extracted_tables,
+                )
 
         return py_result
 

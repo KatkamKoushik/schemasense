@@ -32,6 +32,8 @@ platform = [
     "uvicorn>=0.30.0",
     "sse-starlette>=2.1.0",
     "alembic>=1.13.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
 ]
 
 [tool.pytest.ini_options]

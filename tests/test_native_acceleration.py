@@ -383,10 +383,23 @@ def test_sqlguard_native_validation_direct():
 
 def test_sqlguard_strict_conjunction_double_lock(monkeypatch):
     """Verifies Stage C: Strict Conjunction requires BOTH Python and Native validators to approve."""
+    from schemasense import is_native_core_available
     from schemasense.sql_guard import SQLGuard
 
-    # Legitimate query with double lock enabled
     monkeypatch.setenv("SCHEMASENSE_SQLGUARD_DOUBLE_LOCK", "1")
+
+    # If native core is not available, double-lock must fail-closed
+    if not is_native_core_available():
+        res_unavailable = SQLGuard.validate(
+            "SELECT id, name FROM customers;",
+            dialect="postgres",
+            allowed_tables=["customers"],
+        )
+        assert not res_unavailable.is_valid
+        assert "Strict Conjunction Failure" in (res_unavailable.error_message or "")
+        return
+
+    # Legitimate query with double lock enabled
     res_legit = SQLGuard.validate(
         "SELECT id, name FROM customers;",
         dialect="postgres",

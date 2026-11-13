@@ -158,14 +158,26 @@ class SQLGuard:
         py_result = cls._validate_python(
             query, dialect=dialect, allowed_tables=allowed_tables
         )
-        if cls.SHADOW_VALIDATION:
-            return cls._run_shadow_validation(
+        final_result = (
+            cls._run_shadow_validation(
                 query,
                 dialect=dialect,
                 allowed_tables=allowed_tables,
                 py_result=py_result,
             )
-        return py_result
+            if cls.SHADOW_VALIDATION
+            else py_result
+        )
+        try:
+            from schemasense.observability.metrics import record_sqlguard_validation
+
+            record_sqlguard_validation(
+                decision="allowed" if final_result.is_valid else "rejected",
+                dialect=cls.normalize_dialect(dialect),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return final_result
 
     @classmethod
     def validate_native(
@@ -202,7 +214,18 @@ class SQLGuard:
     ) -> ValidationResult:
         from schemasense import is_native_core_available
 
+        double_lock = (
+            cls.ENFORCE_DOUBLE_LOCK
+            or os.environ.get("SCHEMASENSE_SQLGUARD_DOUBLE_LOCK") == "1"
+        )
+
         if not is_native_core_available():
+            if double_lock:
+                return ValidationResult(
+                    is_valid=False,
+                    error_message="Strict Conjunction Failure: Double-lock validation required, but native SQLGuard core is unavailable.",
+                    extracted_tables=py_result.extracted_tables,
+                )
             return py_result
 
         try:
@@ -231,10 +254,6 @@ class SQLGuard:
                 )
 
             # Strict Conjunction (Stage C Double-Lock)
-            double_lock = (
-                cls.ENFORCE_DOUBLE_LOCK
-                or os.environ.get("SCHEMASENSE_SQLGUARD_DOUBLE_LOCK") == "1"
-            )
             if double_lock and py_result.is_valid and not native_res["is_valid"]:
                 return ValidationResult(
                     is_valid=False,
@@ -243,6 +262,12 @@ class SQLGuard:
                 )
         except Exception as e:  # noqa: BLE001
             logger.debug("Native SQLGuard shadow execution error: %s", e)
+            if double_lock:
+                return ValidationResult(
+                    is_valid=False,
+                    error_message=f"Strict Conjunction Failure: Native SQLGuard error during double-lock validation: {e}",
+                    extracted_tables=py_result.extracted_tables,
+                )
 
         return py_result
 

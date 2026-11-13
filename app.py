@@ -948,14 +948,29 @@ st.session_state.auth_method = auth_mech
 # SIDEBAR: CONNECTION GATEWAY & SETTINGS
 # ──────────────────────────────────────────────
 with st.sidebar:
+    from schemasense.config import get_platform_config
+
+    _plt_cfg = get_platform_config()
+    _mode_label = (
+        "Advanced Platform (API + Celery)"
+        if _plt_cfg.is_advanced_mode
+        else "Simple Mode (In-Process)"
+    )
+    _mode_color = "#10B981" if _plt_cfg.is_advanced_mode else "#3B82F6"
+
     st.markdown(
-        """
+        f"""
         <div style="padding: 0.2rem 0 0.7rem 0; border-bottom: 1px solid rgba(148, 163, 184, 0.12); margin-bottom: 0.8rem;">
             <div style="font-size:1.2rem; font-weight:800; letter-spacing:-0.02em; color:var(--text-primary);">
-                SchemaSense
+                SchemaSense 2.0
             </div>
             <div style="font-size:0.75rem; color:var(--text-muted);">
-                Universal Database Intelligence & Security Console
+                AI-Native Database Intelligence & Security Platform
+            </div>
+            <div style="margin-top: 0.35rem;">
+                <span style="background-color: rgba(59, 130, 246, 0.1); color: {_mode_color}; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 9999px; border: 1px solid rgba(59, 130, 246, 0.25);">
+                    ● {_mode_label}
+                </span>
             </div>
         </div>
         """,

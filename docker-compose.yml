@@ -1,0 +1,188 @@
+# ==============================================================================
+# SchemaSense 2.0 — Production Platform Docker Compose Orchestration
+# ==============================================================================
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Platform State Database (PostgreSQL 16)
+  # ----------------------------------------------------------------------------
+  schemasense-db:
+    image: postgres:16-alpine
+    container_name: schemasense-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: schemasense
+      POSTGRES_PASSWORD: schemasense_secure_pass
+      POSTGRES_DB: schemasense_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - schemasense_platform_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U schemasense -d schemasense_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # 2. Distributed Task Broker & Cache (Redis 7)
+  # ----------------------------------------------------------------------------
+  schemasense-redis:
+    image: redis:7.2-alpine
+    container_name: schemasense-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - schemasense_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # 3. Platform Schema Migration Service (Alembic Versioned Migrations)
+  # Fulfills Mandatory Correction 1: Explicit migrations, never during API boot
+  # ----------------------------------------------------------------------------
+  schemasense-migration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: schemasense-migration
+    command: ["python", "-m", "schemasense.db.migrate", "upgrade", "head"]
+    environment:
+      SCHEMASENSE_MODE: "advanced"
+      SCHEMASENSE_PLATFORM_DB_URL: "postgresql+psycopg2://schemasense:schemasense_secure_pass@schemasense-db:5432/schemasense_platform"
+    depends_on:
+      schemasense-db:
+        condition: service_healthy
+    restart: "no"
+
+  # ----------------------------------------------------------------------------
+  # 4. FastAPI Application Gateway
+  # ----------------------------------------------------------------------------
+  schemasense-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: schemasense-api
+    restart: unless-stopped
+    command: ["uvicorn", "schemasense.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      SCHEMASENSE_MODE: "advanced"
+      SCHEMASENSE_PLATFORM_DB_URL: "postgresql+psycopg2://schemasense:schemasense_secure_pass@schemasense-db:5432/schemasense_platform"
+      REDIS_URL: "redis://schemasense-redis:6379/0"
+      CELERY_BROKER_URL: "redis://schemasense-redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://schemasense-redis:6379/0"
+      JWT_SECRET_KEY: "schemasense-production-enterprise-jwt-key"
+      CORS_ALLOWED_ORIGINS: "http://localhost:8501,http://127.0.0.1:8501"
+    depends_on:
+      schemasense-db:
+        condition: service_healthy
+      schemasense-redis:
+        condition: service_healthy
+      schemasense-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # 5. Distributed Celery Background Worker
+  # ----------------------------------------------------------------------------
+  schemasense-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: schemasense-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "schemasense.tasks.celery_app", "worker", "-l", "info", "-c", "4"]
+    environment:
+      SCHEMASENSE_MODE: "advanced"
+      SCHEMASENSE_PLATFORM_DB_URL: "postgresql+psycopg2://schemasense:schemasense_secure_pass@schemasense-db:5432/schemasense_platform"
+      REDIS_URL: "redis://schemasense-redis:6379/0"
+      CELERY_BROKER_URL: "redis://schemasense-redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://schemasense-redis:6379/0"
+    depends_on:
+      schemasense-db:
+        condition: service_healthy
+      schemasense-redis:
+        condition: service_healthy
+      schemasense-migration:
+        condition: service_completed_successfully
+
+  # ----------------------------------------------------------------------------
+  # 6. Streamlit Frontend Console
+  # ----------------------------------------------------------------------------
+  schemasense-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: schemasense-ui
+    restart: unless-stopped
+    command: ["streamlit", "run", "app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
+      - "8501:8501"
+    environment:
+      SCHEMASENSE_MODE: "advanced"
+      SCHEMASENSE_GATEWAY_URL: "http://schemasense-api:8000"
+    depends_on:
+      schemasense-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ----------------------------------------------------------------------------
+  # 7. Prometheus Metrics Scraper
+  # ----------------------------------------------------------------------------
+  schemasense-prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: schemasense-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - schemasense_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    depends_on:
+      schemasense-api:
+        condition: service_healthy
+
+  # ----------------------------------------------------------------------------
+  # 8. Grafana Metrics Dashboard
+  # ----------------------------------------------------------------------------
+  schemasense-grafana:
+    image: grafana/grafana:11.1.0
+    container_name: schemasense-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=schemasense
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - schemasense_grafana_data:/var/lib/grafana
+    depends_on:
+      - schemasense-prometheus
+
+volumes:
+  schemasense_platform_data:
+  schemasense_redis_data:
+  schemasense_prometheus_data:
+  schemasense_grafana_data:

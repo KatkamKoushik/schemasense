@@ -27,6 +27,16 @@ native = [
     "schemasense-core>=0.1.0",
     "pyarrow>=15.0.0",
 ]
+platform = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "sse-starlette>=2.1.0",
+    "alembic>=1.13.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "celery>=5.3.0",
+    "redis>=5.0.0",
+]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

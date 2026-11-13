@@ -1,35 +1,73 @@
-# SchemaSense AI — Intelligent Data Dictionary & Enterprise Data Agent
+# SchemaSense 2.0 — AI-Native Database Intelligence & Security Platform
 
-> **Built for Enterprise Relational Databases** | Universal Multi-Cloud & Local AI Inference Engines (**Google Gemini**, **OpenAI**, **Microsoft Azure OpenAI**, **AWS Bedrock**, **Cloudflare Workers AI**, **Anthropic Claude**, **DeepSeek**, **Groq**, **OpenRouter**, **Mistral**, **Ollama**, **Custom Gateways**, **llama.cpp**) | **SQLAlchemy** | **Streamlit**
+> **Polyglot Database Intelligence Platform** | **FastAPI Application Gateway** | **12-State LangGraph Agent** | **Celery + Redis Workloads** | **PyO3 Native Core** | **SQLAlchemy** | **Streamlit**
 
 [![SchemaSense CI](https://github.com/KatkamKoushik/schemasense/actions/workflows/ci.yml/badge.svg)](https://github.com/KatkamKoushik/schemasense/actions/workflows/ci.yml)
 [![Python Versions](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.39%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
-[![Security: SQLGuard AST](https://img.shields.io/badge/Security-SQLGuard%20AST-10B981?logo=shield)](docs/security/threat-model.md)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-417%20Total%20%7C%20100%25%20Passing-brightgreen?logo=pytest)](tests/)
-[![Coverage](https://img.shields.io/badge/Coverage-91%25-brightgreen)](tests/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-12--State%20Lifecycle-blueviolet)](https://github.com/langchain-ai/langgraph)
+[![Security: SQLGuard Double-Lock](https://img.shields.io/badge/Security-SQLGuard%20Double--Lock-10B981?logo=shield)](docs/security/threat-model.md)
+[![Tests: Pytest](https://img.shields.io/badge/Tests-Verified%20Passing-brightgreen?logo=pytest)](tests/)
 [![Supply Chain: CycloneDX](https://img.shields.io/badge/SBOM-CycloneDX%20v1.5-blue?logo=owasp)](sbom.cyclonedx.json)
 [![Secrets: Scanned](https://img.shields.io/badge/Secret%20Scan-detect--secrets-success)](.secrets.baseline)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An enterprise AI Data Steward and Schema Intelligence Agent that connects to relational and cloud databases (**PostgreSQL**, **MySQL**, **SQLite**, **AWS RDS/Aurora**, **Azure Database for PostgreSQL/MySQL**, **Google Cloud SQL**, **Supabase**, **Neon**) to **generate interactive data dictionaries, classify sensitive PII entities, export DBML/DDL schemas, enforce AST-based SQL guardrails, audit data quality, track schema evolution & drift, bound database concurrency, ground queries in business rules, and execute structured AI inference with any cloud or local model**.
+An enterprise AI-native data steward, schema intelligence platform, and database governance agent that connects to relational and cloud databases (**PostgreSQL**, **MySQL**, **SQLite**, **AWS RDS/Aurora**, **Azure Database for PostgreSQL/MySQL**, **Google Cloud SQL**, **Supabase**, **Neon**) to **orchestrate multi-state autonomous analytical agents, stream sequenced Server-Sent Events (SSE), queue background schema profiling, enforce AST-based SQL guardrails with native Rust acceleration, audit data quality, and execute structured AI inference with any cloud or local model**.
+
+---
+
+## Dual-Mode Architecture Contract
+
+SchemaSense 2.0 enforces a strict dual-mode operational contract separating lightweight developer usage from distributed enterprise deployments:
+
+| Dimension | Simple Mode (Default / Developer / Streamlit Cloud) | Advanced Mode (Enterprise Platform / Production) |
+|---|---|---|
+| **Target Audience** | Individual developers, data analysts, quick local triage | Enterprise teams, multi-tenant SaaS, high-throughput agents |
+| **Dependencies** | Python 3.10+ & Streamlit (`requirements.txt`). Zero external daemons. | Optional extra: `pip install -e .[platform]` (`FastAPI`, `Celery`, `Redis`, `PostgreSQL`) |
+| **Application Gateway** | Direct Streamlit interactive console | `FastAPI` (REST, sequenced SSE streaming, OIDC/JWT auth) |
+| **Agent Execution** | Synchronous, in-process execution with `InMemorySaver` / `SqliteSaver` | Asynchronous 12-state `LangGraph` with `AsyncPostgresSaver` |
+| **Background Workloads**| In-process synchronous execution (strictly restricted to Simple Mode) | `Celery` workers with `Redis` broker, at-least-once leasing, and fail-fast outages |
+| **State & Checkpoints** | In-memory session state or local SQLite | Durable `PostgreSQL` platform database with version-controlled `Alembic` migrations |
+| **Native Core** | Optional Rust acceleration (`schemasense-core`); 100% pure-Python fallback | Rust acceleration + Python SQLGuard conjunction double-lock |
+
+---
+
+## 12-State Agent Execution Lifecycle
+
+SchemaSense 2.0 implements a deterministic, gated execution state machine powered by **LangGraph**:
+
+```
+RECEIVE ──> UNDERSTAND ──> PLAN ──> SELECT_TOOLS ──> CHECK_PERMISSIONS ──> VALIDATE_PRECONDITIONS
+                                                                                  │
+┌─────────────────────────────── HUMAN_APPROVAL <── (Gated / Low Confidence) <────┴── SCORE_CONFIDENCE
+│                                      │                                                    │
+│ (Approved)                           │ (Rejected / Expired / Cancelled)                   │ (Auto-Approved)
+▼                                      ▼                                                    ▼
+EXECUTE ───────────────────────────> REJECTED ──────────────────────────────────────────> EXECUTE
+  │                                    │                                                    │
+  ▼                                    │                                                    ▼
+VERIFY ──> DELIVER ──> AUDIT_AND_LEARN <────────────────────────────────────────────────────┘
+```
+
+- **Mandatory Pre-Execution Approval Gate**: Gated, destructive, or high-risk tools strictly require human reviewer authorization (`approve`, `reject`, `cancel`, `expire`) **before** execution starts.
+- **Zero Raw Secret Leakage**: State machines and SSE frames only consume opaque server-side registered `connection_id` references—never raw database connection URIs or credentials.
+- **Deterministic Conjunction Double-Lock**: Python AST validation combined with native Rust core validation ensures queries fail closed if either validator detects risk.
 
 ---
 
 ## Highlights
 
-- **Universal Multi-Cloud & Local AI Architecture**: Connect any model, any provider, and any custom gateway. Natively supports **Google Gemini**, **OpenAI** (GPT-4o, o1, o3-mini), **Microsoft Azure OpenAI Service** (with automated `api-key` header routing and deployment URLs), **AWS Bedrock** (via LiteLLM / gateway), **Cloudflare Workers AI**, **Anthropic Claude** (Claude 3.5 Sonnet, Haiku), **DeepSeek** (V3, R1), **Groq** (Llama 3.3 70B, Mixtral), **OpenRouter** (200+ models), **Mistral AI**, **Ollama** (local HTTP/self-hosted), **Custom OpenAI-compatible gateways**, and **llama.cpp** (local in-process GGUF inference with lazy weight allocation and zero cloud fallback).
-- **Interactive Multi-Palette Theme Engine**: Hand-crafted, high-contrast accessible visual designs including **Clean Light**, **Pure White (Minimal)**, **Obsidian Dark**, **Midnight Charcoal (OLED)**, **Steel Gray**, **Nordic Slate**, and **Deep Ocean Navy**. Dynamically injects theme variables and enforces WCAG-compliant contrast across all text, cards, inputs, and metric chips without page reloads.
-- **Automated PII & Sensitive Entity Classification**: Built-in pattern recognition engine in the column profiler that audits tables for sensitive information (email addresses, phone numbers, credit card numbers, Social Security Numbers, IP addresses) and displays clear severity risk badges in the Data Dictionary and Column Profiler.
-- **Enterprise Zero-Trust Access Gate**: Built-in identity gateway supporting federated **Google OAuth 2.0** and **GitHub OAuth 2.0** SSO, trusted reverse-proxy headers (`X-Forwarded-User`, Cloudflare Access OIDC, AWS ALB, `X-Remote-User`), and cryptographically safe token gating (`SCHEMASENSE_ACCESS_KEY`), keeping unauthorized operators locked out of internal database consoles.
-- **Schema Architecture & DBML/DDL Dual-Format Export**: Deep introspection capturing primary keys, unique constraints, foreign keys (including composite relationships), and indexes. Includes one-click exports for **DBML** (`.dbml` for dbdiagram.io / dbdocs.io), standard **SQL DDL** (`.sql`), **JSON**, and **Markdown**.
-- **Cloud Database SSL/TLS Security**: Native encryption modes (`prefer`, `require`, `verify-ca`, `verify-full`) allowing instant, secure connections to managed cloud database instances on AWS RDS, AWS Aurora, Azure Database Flexible Server, Google Cloud SQL, Supabase, and Neon.
-- **AST-Based SQLGuard**: Dialect-aware parser powered by `sqlglot`. Strictly enforces single read-only `SELECT` statements, validates tables against an active allowlist, resolves CTE aliases by AST scope, prevents schema spoofing, blocks destructive DDL/DML, and enforces database-level statement timeouts (5,000ms) and row caps (1,000 rows).
-- **Least-Privilege Enforcement**: Active runtime catalog inspection identifying superuser or administrative credentials without relying on naive username heuristics. Includes interactive UI policy toggles to reject privileged connections.
-- **Deep Schema Evolution Diffing**: Capture live schema snapshots and perform deterministic schema drift diffing (detecting added/removed tables, column additions, and type modifications).
-- **Data Quality & Statistical Profiling**: Calculates null percentages, distinct counts, candidate primary keys, duplicate row rates, numeric outlier detection (IQR), and computes a composite Data Quality Score (0–100%).
-- **Bounded Concurrency & Pool Management**: Bounded SQLAlchemy `QueuePool` with session timeouts, client-side concurrency semaphores, and safe pool disposal on disconnect.
-- **Supply-Chain Security Gates**: Continuous vulnerability auditing (`pip-audit`), secret scanning (`detect-secrets`), reproducible builds (`constraints.txt`), and CycloneDX SBOM release artifacts.
+- **Universal Multi-Cloud & Local AI Architecture**: Connect any model, any provider, and any custom gateway. Natively supports **Google Gemini**, **OpenAI** (GPT-4o, o1, o3-mini), **Microsoft Azure OpenAI Service**, **AWS Bedrock**, **Cloudflare Workers AI**, **Anthropic Claude**, **DeepSeek**, **Groq**, **OpenRouter**, **Mistral AI**, **Ollama**, **Custom OpenAI-compatible gateways**, and **llama.cpp** (local in-process GGUF).
+- **Production Observability & Gateway Security**: Standard Prometheus `/metrics` exposition, OpenTelemetry-compatible distributed tracing with correlation headers (`X-Trace-ID`, `X-Response-Time-Seconds`), sliding-window rate limiting with `HTTP 429` and `Retry-After`, and strict privacy-preserving telemetry forbidding raw SQL and secrets in metrics (**Mandatory Correction 18**).
+- **FastAPI Application Gateway & Sequenced SSE Streaming**: W3C compliant Server-Sent Events with monotonically increasing sequential IDs (`id: <int>`), ring buffer retention, and reconnection replay via standard `Last-Event-ID`.
+- **Distributed Asynchronous Workloads**: Celery background tasks with at-least-once leasing (`task_acks_late=True`, `task_reject_on_worker_lost=True`), bounded exponential backoff retries, and strict fail-fast error handling during queue outages.
+- **Versioned Platform Database Migrations**: Explicit Alembic migration management (`python -m schemasense.db.migrate upgrade head`, `check`, `downgrade -1`) ensuring zero unvetted migrations during web gateway boot.
+- **Automated PII & Sensitive Entity Classification**: Pattern recognition auditing tables for sensitive entities (email addresses, phone numbers, credit card numbers, Social Security Numbers, IP addresses) with risk severity badges.
+- **AST-Based SQLGuard with Conjunction Double-Lock**: Enforces single read-only `SELECT` statements, validates tables against allowlists, resolves CTE aliases by AST scope, prevents schema spoofing, blocks destructive DDL/DML, and enforces statement timeouts (5,000ms) and row caps.
+- **Multi-Palette Theme Engine**: Hand-crafted, high-contrast accessible visual designs including **Clean Light**, **Pure White (Minimal)**, **Obsidian Dark**, **Midnight Charcoal (OLED)**, **Steel Gray**, **Nordic Slate**, and **Deep Ocean Navy**.
+- **Enterprise Access Gate**: Identity gateway supporting federated **Google OAuth 2.0** and **GitHub OAuth 2.0** SSO, trusted reverse-proxy headers (`X-Forwarded-User`, Cloudflare Access OIDC, AWS ALB), and cryptographically safe token gating.
+- **Disaster Recovery Runbooks**: Documented Point-in-Time Recovery (PITR), database backups, Alembic schema rollbacks, and zero-downtime secret rotation.
 
 ---
 
@@ -48,91 +86,81 @@ An enterprise AI Data Steward and Schema Intelligence Agent that connects to rel
 
 ## Quick Start
 
-### 1. Clone & Install Dependencies
+### Option A: Advanced Mode (Docker Compose — One-Command Production Platform)
+
+Launch the complete SchemaSense 2.0 platform (PostgreSQL 16 platform DB, Redis 7 broker, versioned migration runner, FastAPI Gateway, Celery worker, and Streamlit console):
 
 ```bash
 git clone https://github.com/KatkamKoushik/schemasense.git
 cd schemasense
 
-# Standard installation (cloud AI providers + database drivers):
+# Launch entire platform in background:
+docker compose up -d
+
+# Open Streamlit Console: http://localhost:8501
+# Open FastAPI OpenAPI Documentation: http://localhost:8000/docs
+# Check Gateway Readiness Probe: curl http://localhost:8000/health/ready
+# Check Prometheus Platform Metrics: curl http://localhost:8000/metrics
+# Open Prometheus Metrics Explorer: http://localhost:9090
+# Open Grafana Dashboards: http://localhost:3000 (admin / schemasense)
+```
+
+### Option B: Simple Mode (Standalone Python + Streamlit — Zero External Daemons)
+
+Run SchemaSense directly on your local machine with in-memory execution and zero background services required:
+
+```bash
+git clone https://github.com/KatkamKoushik/schemasense.git
+cd schemasense
+
+# 1. Standard installation:
 pip install -r requirements.txt -r requirements-dev.txt
 
-# Optional: Add local GGUF inference engine:
-pip install -r requirements-local.txt
-
-# For reproducible, constraint-locked deployment:
-pip install -r requirements.txt -c constraints.txt
-```
-
-### 2. Run Test Suite & Coverage
-
-Verify the security boundaries, backend contracts, and analytical logic across the test suite (**400 tests total with 100% pass rate**):
-
-- **Fast Unit, AST Guardrail & Contract Suite (358 tests)**: In-memory SQLite, mock schemas, AST SQLGuard adversarial syntax, universal AI backend resilience, OAuth 2.0 flows, and UI headless AppTests. Executes in <26 seconds without external dependencies.
-- **Live Multi-Database Suite (42 tests)**: Real PostgreSQL 16, MySQL 8.4, and SQLite container tests. Automatically executes when test containers are active, or skips safely when offline.
-
-```bash
-# 1. Run fast offline test suite (358 tests):
-pytest -v -m "not docker"
-
-# 2. Fast isolated unit suite with coverage:
-pytest -v --ignore=tests/test_live_integration.py --cov=schemasense --cov-report=term-missing
-
-# 3. Full live container suite (requires Docker test containers):
-docker compose -f docker-compose.test.yml up -d --wait
-pytest -v --cov=schemasense --cov-report=term-missing
-```
-
-### 3. Supply-Chain & Security Audit Commands
-
-```bash
-# 1. Dependency vulnerability audit
-pip-audit -r requirements.txt
-
-# 2. Secret scanning against baseline
-detect-secrets scan --baseline .secrets.baseline --exclude-files "(\.git|__pycache__|\.venv|venv|\.secrets\.baseline)"
-
-# 3. Generate CycloneDX SBOM
-cyclonedx-py requirements constraints.txt -o sbom.cyclonedx.json
-
-# 4. Code quality and formatting checks
-python -m ruff check app.py schemasense/ tests/
-python -m ruff format --check app.py schemasense/ tests/
-```
-
-### 4. Configure Inference Providers
-
-SchemaSense allows selecting your preferred AI gateway directly in the sidebar or via configuration:
-
-#### Option A: Google Gemini (Cloud)
-Configure via `.streamlit/secrets.toml` or environment variable:
-```toml
-GEMINI_API_KEY = ""  # Place your Google Gemini API key here
-# Multi-key round-robin rotation:
-GEMINI_KEYS = ["", ""]
-```
-
-#### Option B: Microsoft Azure OpenAI Service
-In the sidebar **Inference Backend** section:
-1. Select **Microsoft Azure OpenAI**.
-2. Enter your **Azure Endpoint URL** (e.g. `https://<resource>.openai.azure.com/openai/deployments/<model>`).
-3. Enter your **Deployment Name** (e.g. `gpt-4o`) and **Azure API Key**.
-4. Authentication header `api-key` is forwarded automatically.
-
-#### Option C: AWS Bedrock / Cloudflare Workers AI / OpenAI / Anthropic / DeepSeek / Groq / OpenRouter
-1. Select your provider from the dropdown (**AWS Bedrock**, **Cloudflare Workers AI**, **OpenAI**, **Anthropic Claude**, **DeepSeek**, **Groq**, **OpenRouter**, or **Mistral AI**).
-2. Enter your API key / token (or gateway URL).
-3. Click **⚡ Test Provider Ping** to verify connectivity immediately.
-
-#### Option D: llama.cpp (Local GGUF)
-1. Install local dependencies: `pip install -r requirements-local.txt`
-2. Select **llama.cpp (Local GGUF)** in the sidebar and enter your local `.gguf` file path.
-3. Inference runs in-process with zero network traffic.
-
-### 5. Run Application
-
-```bash
+# 2. Launch Streamlit console in Simple Mode:
 streamlit run app.py
+```
+
+### Option C: Advanced Mode Manual Launch (FastAPI + Celery + Redis + Postgres)
+
+```bash
+# 1. Install platform dependencies:
+pip install -e ".[platform]"
+
+# 2. Run explicit version-controlled platform migrations:
+python -m schemasense.db.migrate upgrade head
+
+# 3. Start distributed Celery worker:
+celery -A schemasense.tasks.celery_app worker -l info
+
+# 4. Start FastAPI Application Gateway:
+uvicorn schemasense.api.app:app --host 0.0.0.0 --port 8000
+
+# 5. Start Streamlit Console:
+streamlit run app.py
+```
+
+---
+
+## Testing & Quality Verification
+
+SchemaSense 2.0 enforces a multi-tier test matrix verified continuously across GitHub Actions:
+
+- **Unit & Contract Suite**: SQLite in-memory, AST SQLGuard adversarial syntax, universal AI backend resilience, and UI headless AppTests.
+- **Agent Lifecycle & SSE Suite**: 12-state journey, pre-execution approval gating, monotonic integer SSE event streaming, and `Last-Event-ID` reconnection replay.
+- **Live Database Integration Suite**: Real PostgreSQL 16 and MySQL 8.4 container integration and Playwright browser smoke tests.
+
+```bash
+# 1. Run full fast unit, agent, and API platform test suite:
+pytest -v -m "not integration and not playwright"
+
+# 2. Run live container integration tests (requires Docker containers):
+docker compose -f docker-compose.test.yml up -d --wait
+pytest -v tests/test_live_integration.py
+
+# 3. Code formatting and quality gates:
+python -m ruff check schemasense/ tests/ app.py
+python -m ruff format --check schemasense/ tests/ app.py
+python -m mypy schemasense --ignore-missing-imports
 ```
 
 ---
@@ -141,82 +169,86 @@ streamlit run app.py
 
 ```
 schemasense/
-├── schemasense/                    # Core Python Backend Package
+├── schemasense/                    # Core Python Backend & Platform Engine
 │   ├── __init__.py
+│   ├── config.py                   # Platform configuration, secure connection registry & trusted CORS
 │   ├── ai_agent.py                 # Multi-provider AI agent & session-isolated caching
+│   ├── agent/                      # SchemaSense 2.0 LangGraph 12-State Agent Lifecycle
+│   │   ├── lifecycle.py            # 12-state enum & approval action/status definitions
+│   │   ├── state.py                # Zero-secret AgentState container with opaque connection IDs
+│   │   ├── tools.py                # Typed tools (inspect_schema, validate_sql, execute_query, scan_pii)
+│   │   ├── checkpointer.py         # Pluggable checkpointer (MemorySaver, SqliteSaver, AsyncPostgresSaver)
+│   │   ├── graph.py                # Compiled LangGraph with pre-execution human approval gating
+│   │   └── runner.py               # Lifecycle initiation and interrupt resume manager
+│   ├── api/                        # FastAPI Application Gateway
+│   │   ├── app.py                  # Gateway application factory & security headers
+│   │   ├── auth.py                 # Cryptographic JWT & reverse-proxy identity derivation
+│   │   ├── events.py               # W3C SSE streamer with monotonic IDs & Last-Event-ID replay
+│   │   ├── schemas.py              # Strict Pydantic V2 request & response schemas
+│   │   └── routes/                 # Endpoint routers (/health/live, /health/ready, /agent/runs)
+│   ├── tasks/                      # Distributed Asynchronous Background Tasks
+│   │   ├── celery_app.py           # Celery application factory with at-least-once acks
+│   │   ├── dispatcher.py           # Dual-mode dispatcher (Simple in-process, Advanced fail-fast)
+│   │   └── tasks.py                # Celery worker tasks with bounded exponential retries
+│   ├── db/                         # PostgreSQL Platform State & Alembic Migrations
+│   │   ├── base.py                 # SQLAlchemy declarative base with tenant isolation mixins
+│   │   ├── models.py               # Tenant, User, ApiKey, ConnectionReference, AgentRunRecord, AuditEventRecord
+│   │   ├── session.py              # Thread-safe scoped session and connection pooling
+│   │   └── migrate.py              # Explicit migration CLI (upgrade, downgrade, check)
 │   ├── runtime/                    # Universal Inference Runtime Subsystem
 │   │   ├── backends/               # Base contract, Gemini, OpenAI/Azure/Bedrock, Claude, llama.cpp
-│   │   │   ├── base.py             # InferenceBackend contract & streaming protocols
-│   │   │   ├── gemini.py           # Google Gemini SDK adapter with key rotation
-│   │   │   ├── openai_compat.py    # Universal adapter (OpenAI, Azure, Bedrock, Cloudflare, DeepSeek, Groq, Ollama)
-│   │   │   ├── anthropic_backend.py# Anthropic Claude Messages API adapter
-│   │   │   └── llama_cpp.py        # Local in-process GGUF adapter
 │   │   ├── parsers.py              # Zero-dependency GGUF metadata parser
 │   │   ├── registry.py             # Local model discovery and integrity verification
 │   │   ├── hardware.py             # Memory and accelerator capability detection
 │   │   └── compatibility.py        # Model compatibility and memory estimator
-│   ├── connection.py               # Safe URL creation, engine lifecycle, cloud SSL, least-privilege inspection, pool disposal
-│   ├── sql_guard.py                # AST parser (sqlglot), CTE scope resolution, table allowlists, dialect timeouts & row caps
-│   ├── schema_inspector.py         # PKs, FKs, constraints, indexes, data dictionaries, DBML/DDL exports & schema drift diffing
-│   ├── profiler.py                 # Data quality metrics, automated PII entity scanner, outlier detection, scoring formula
+│   ├── connection.py               # Safe URL creation, engine lifecycle, cloud SSL, least-privilege inspection
+│   ├── sql_guard.py                # AST parser (sqlglot), CTE scope resolution, conjunction double-lock
+│   ├── schema_inspector.py         # PKs, FKs, constraints, indexes, data dictionaries, DBML/DDL exports & diffing
+│   ├── profiler.py                 # Data quality metrics, automated PII entity scanner, outlier detection
 │   ├── rules_engine.py             # PDF business-rule ingestion (pypdf) & prompt grounding
 │   ├── benchmark.py                # Synthetic workload & latency benchmark harnesses
 │   └── auth.py                     # Enterprise OAuth 2.0 (Google & GitHub SSO), IAP headers, token gateway
-├── tests/                          # 400 Unit, Adversarial, Integration, and AppTest tests
-│   ├── conftest.py                 # SQLite test fixtures & mock schemas
-│   ├── test_auth.py                # 10 Google & GitHub OAuth 2.0 and identity gateway tests
-│   ├── test_backends_base.py       # Neutral backend contract tests
-│   ├── test_backends_gemini.py     # Gemini backend & key rotation tests
-│   ├── test_backends_openai.py     # Universal OpenAI / Azure / Bedrock / Cloudflare backend tests
-│   ├── test_backends_anthropic.py  # Anthropic Claude backend tests
-│   ├── test_backends_llama_cpp.py  # llama.cpp local backend & lazy-loading tests
-│   ├── test_backend_selection.py   # Explicit backend selection & multi-provider factory tests
-│   ├── test_ai_agent.py            # AI agent structured output & fallback tests
-│   ├── test_sql_guard.py           # 54 adversarial SQL, dialect, and AST tests
-│   ├── test_connection.py          # 14 connection security, pool, cloud SSL, SQLite & concurrency tests
-│   ├── test_inspector.py           # 8 schema inspection, DBML/DDL exports, diffing, and composite FK tests
-│   ├── test_profiler.py            # 4 quality metrics, PII detection, and outlier tests
-│   ├── test_rules_engine.py        # PDF business rule parsing tests
-│   ├── test_runtime_parsers.py     # GGUF parser tests
-│   ├── test_runtime_registry.py    # Model discovery & SHA256 integrity tests
-│   ├── test_runtime_hardware.py    # Hardware detection tests
-│   ├── test_runtime_compatibility.py # Runtime compatibility tests
-│   ├── test_dependency_hygiene.py  # Dependency hygiene & import boundary tests
-│   ├── test_ui_apptest.py          # Streamlit headless AppTest integration tests
-│   ├── test_ui_enterprise.py       # Enterprise UI themes, multi-backend selection, cloud SSL & SQLite tests
-│   └── test_live_integration.py    # Live PostgreSQL 16 & MySQL 8.4 container tests
-├── .github/
-│   ├── workflows/
-│   │   └── ci.yml                  # Automated CI matrix, security audit, and coverage gates
-│   └── dependabot.yml              # Dependabot config for pip & GitHub Actions
+├── crates/                         # Native Rust Core (PyO3 ABI3 Extension)
+│   └── schemasense_core/           # Native AST SQL validator, graph engine & Rayon numerical profiler
+├── tests/                          # 450+ Automated Unit, Lifecycle, Adversarial, Integration & E2E tests
+│   ├── test_agent_lifecycle.py     # 12-state LangGraph agent execution and approval gate tests
+│   ├── test_api_foundation.py      # FastAPI gateway, liveness/readiness, and CORS tests
+│   ├── test_async_sse_celery.py    # W3C SSE streaming, reconnection replay, and Celery queue tests
+│   ├── test_platform_e2e_resilience.py # Multi-tenant isolation, DR runbooks, and double-lock stress tests
+│   ├── test_db_models.py           # Platform database models and Alembic migration tests
+│   ├── test_sql_guard.py           # Adversarial SQL, dialect, and AST injection tests
+│   ├── test_connection.py          # Connection security, pool, cloud SSL & concurrency tests
+│   ├── test_live_integration.py    # Live PostgreSQL 16 & MySQL 8.4 container tests
+│   └── test_ui_apptest.py          # Streamlit headless AppTest integration tests
 ├── docs/
-│   ├── architecture/
-│   │   └── target-architecture.md  # Architectural blueprint & module boundaries
+│   ├── deployment/
+│   │   ├── disaster-recovery.md    # Production DR runbook, PITR backup/restore & Alembic rollbacks
+│   │   └── readiness-checklist.md  # Internal pilot verification checklist
 │   ├── security/
-│   │   ├── access-control.md       # Enterprise Access Control & Zero-Trust Authentication Architecture
+│   │   ├── access-control.md       # Zero-Trust Authentication Architecture
 │   │   ├── threat-model.md         # Threat model & attack mitigations
 │   │   ├── database-permissions.md # DB engine permission setup & dialect limitations
 │   │   └── supply-chain.md         # Supply-chain security policy, SBOM & triage SLA
-│   ├── deployment/
-│   │   └── readiness-checklist.md  # Internal pilot verification checklist
 │   └── testing/
 │       ├── verification-plan.md    # Test strategy, mutation testing evaluation & gates
 │       └── master-engineering-checklist.md # Complete software engineering checklist assessment
-├── constraints.txt                 # Pinned dependencies for reproducible pilot builds
+├── Dockerfile                      # Multi-stage, rootless, hardened container image
+├── docker-compose.yml              # Production platform orchestration (API, Worker, DB, Redis, UI)
+├── alembic.ini                     # Platform database migration configuration
+├── constraints.txt                 # Pinned dependencies for reproducible builds
 ├── requirements.txt                # Runtime application dependencies
 ├── requirements-dev.txt            # Development, CI, and audit tooling
-├── requirements-local.txt          # Optional local llama.cpp inference engine
 ├── sbom.cyclonedx.json             # CycloneDX Software Bill of Materials (SBOM)
 ├── .secrets.baseline               # detect-secrets audited baseline
-├── docker-compose.test.yml         # Disposable PostgreSQL 16 & MySQL 8.4 test containers
 ├── LICENSE                         # MIT License
 └── app.py                          # Streamlit UI consuming the schemasense package
 ```
 
 ---
 
-## Security Documentation
+## Operational & Disaster Recovery Documentation
 
+- [Disaster Recovery Runbook, Backups & Alembic Rollbacks](docs/deployment/disaster-recovery.md)
 - [Enterprise Access Control & Authentication Architecture](docs/security/access-control.md)
 - [Complete Software Project Engineering Master Checklist Assessment](docs/testing/master-engineering-checklist.md)
 - [Threat Model & Attack Mitigations](docs/security/threat-model.md)

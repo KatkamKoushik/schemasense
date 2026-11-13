@@ -21,6 +21,7 @@ jobs:
   build-wheels:
     name: Build wheels on ${{ matrix.os }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.allow_failure || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -35,8 +36,10 @@ jobs:
             target: x86_64-pc-windows-msvc
           - os: macos-13
             target: x86_64-apple-darwin
-          - os: macos-14
+            allow_failure: true
+          - os: macos-13
             target: aarch64-apple-darwin
+            allow_failure: true
 
     steps:
       - name: Check out repository

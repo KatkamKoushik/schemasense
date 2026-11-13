@@ -105,7 +105,8 @@ jobs:
 
       - name: Build & install native Rust extension (schemasense-core)
         run: |
-          maturin develop --manifest-path crates/schemasense_core/Cargo.toml
+          maturin build --manifest-path crates/schemasense_core/Cargo.toml --out dist
+          pip install dist/*.whl
 
       - name: Lint with Ruff
         run: |
@@ -213,7 +214,8 @@ jobs:
 
       - name: Build & install native Rust extension (schemasense-core)
         run: |
-          maturin develop --manifest-path crates/schemasense_core/Cargo.toml
+          maturin build --manifest-path crates/schemasense_core/Cargo.toml --out dist
+          pip install dist/*.whl
 
       - name: Run live integration tests & adversarial suite
         run: |

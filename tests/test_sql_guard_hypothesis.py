@@ -50,3 +50,57 @@ def test_hypothesis_safe_select_invariant(table: str, col: str, limit: int):
     assert isinstance(result.is_valid, bool)
     if result.is_valid:
         assert table in [t.lower() for t in result.extracted_tables]
+
+
+@given(
+    table=st.text(alphabet="abcdefghijklmnopqrstuvwxyz_", min_size=1, max_size=15),
+    col=st.text(alphabet="abcdefghijklmnopqrstuvwxyz_", min_size=1, max_size=15),
+    predicate_val=st.integers(min_value=0, max_value=10000),
+    dialect=st.sampled_from(["postgres", "mysql", "sqlite"]),
+)
+@settings(max_examples=50, deadline=None)
+def test_hypothesis_differential_equivalence(
+    table: str, col: str, predicate_val: int, dialect: str
+):
+    """Property invariant: Python and Native Rust SQLGuard produce identical validity verdicts."""
+    from schemasense import is_native_core_available
+
+    if not is_native_core_available():
+        return
+
+    query = f"SELECT {col} FROM {table} WHERE id = {predicate_val};"
+    res_py = SQLGuard._validate_python(query, dialect=dialect, allowed_tables=[table])
+    res_native = SQLGuard.validate_native(
+        query, dialect=dialect, allowed_tables=[table]
+    )
+
+    assert res_py.is_valid == res_native.is_valid
+    if res_py.is_valid:
+        assert [t.lower() for t in res_py.extracted_tables] == [
+            t.lower() for t in res_native.extracted_tables
+        ]
+
+
+@given(
+    verb=st.sampled_from(WRITE_KEYWORDS),
+    table=st.text(alphabet="abcdefghijklmnopqrstuvwxyz_", min_size=1, max_size=15),
+    dialect=st.sampled_from(["postgres", "mysql", "sqlite"]),
+)
+@settings(max_examples=50, deadline=None)
+def test_hypothesis_differential_adversarial_rejection(
+    verb: str, table: str, dialect: str
+):
+    """Property invariant: Both Python and Native engines strictly reject write operations."""
+    from schemasense import is_native_core_available
+
+    if not is_native_core_available():
+        return
+
+    query = f"{verb} TABLE {table};"
+    res_py = SQLGuard._validate_python(query, dialect=dialect, allowed_tables=[table])
+    res_native = SQLGuard.validate_native(
+        query, dialect=dialect, allowed_tables=[table]
+    )
+
+    assert res_py.is_valid is False
+    assert res_native.is_valid is False

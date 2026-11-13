@@ -58,3 +58,10 @@ coverage_html/
 *.bin
 *.pt
 models/
+
+# Rust build artifacts
+target/
+*.whl
+
+# Scratch scripts
+scratch/

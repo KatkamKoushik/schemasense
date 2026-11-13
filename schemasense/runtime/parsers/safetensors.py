@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import struct
 from pathlib import Path
+from typing import Any
 
 from schemasense.runtime.types import (
     ModelArchitecture,
@@ -12,6 +14,8 @@ from schemasense.runtime.types import (
     ModelHyperparameters,
     ModelManifest,
 )
+
+logger = logging.getLogger("schemasense.runtime.parsers.safetensors")
 
 MAX_SAFETENSORS_HEADER_BYTES = 16 * 1024 * 1024  # 16 MB boundary
 
@@ -34,6 +38,32 @@ class SafeTensorsParser:
             raise SafeTensorsParseError(
                 f"File too small for SafeTensors container: {file_size} bytes"
             )
+
+        from schemasense import is_native_core_available
+
+        if is_native_core_available():
+            try:
+                import schemasense_core
+
+                raw = schemasense_core.parse_safetensors_metadata(str(p))
+                return cls._payload_to_manifest(raw, p, file_size)
+            except Exception as e:  # noqa: BLE001
+                err_msg = str(e)
+                if any(
+                    x in err_msg
+                    for x in (
+                        "File too small",
+                        "SafeTensors header length",
+                        "Malformed SafeTensors JSON",
+                        "exceeds safety limit",
+                        "Unexpected EOF",
+                    )
+                ):
+                    raise SafeTensorsParseError(err_msg) from e
+                logger.debug(
+                    "Native SafeTensors parser encountered unexpected error, falling back to Python: %s",
+                    e,
+                )
 
         with open(p, "rb") as f:
             raw_len = f.read(8)
@@ -97,6 +127,55 @@ class SafeTensorsParser:
             license_str=metadata_dict.get("license"),
             untrusted_chat_template=metadata_dict.get("chat_template"),
             provenance_notes=provenance,
+        )
+
+    @classmethod
+    def _payload_to_manifest(
+        cls, raw: dict[str, Any], p: Path, file_size: int
+    ) -> ModelManifest:
+        hp_dict = raw.get("hyperparameters")
+        hyperparams = None
+        if hp_dict:
+            arch_str = hp_dict.get("architecture", "")
+            arch_enum = ModelArchitecture.UNKNOWN
+            if "llama" in arch_str:
+                arch_enum = ModelArchitecture.LLAMA
+            elif "qwen" in arch_str:
+                arch_enum = ModelArchitecture.QWEN2
+            elif "mistral" in arch_str:
+                arch_enum = ModelArchitecture.MISTRAL
+            elif "gemma" in arch_str:
+                arch_enum = ModelArchitecture.GEMMA2
+            elif "deepseek" in arch_str:
+                arch_enum = ModelArchitecture.DEEPSEEK
+
+            hyperparams = ModelHyperparameters(
+                architecture=arch_enum,
+                raw_architecture_name=hp_dict.get("raw_architecture_name", ""),
+                layer_count=hp_dict.get("layer_count"),
+                embedding_length=hp_dict.get("embedding_length"),
+                feed_forward_length=hp_dict.get("feed_forward_length"),
+                head_count=hp_dict.get("head_count"),
+                head_count_kv=hp_dict.get("head_count_kv"),
+                context_length=hp_dict.get("context_length"),
+                sliding_window=hp_dict.get("sliding_window"),
+                sliding_window_layers=hp_dict.get("sliding_window_layers"),
+                sliding_window_pattern=hp_dict.get("sliding_window_pattern"),
+            )
+
+        return ModelManifest(
+            model_id=raw.get("model_id", p.stem),
+            file_path=p,
+            file_size_bytes=file_size,
+            format=ModelFormat.SAFETENSORS,
+            hyperparameters=hyperparams,
+            tensor_count=raw.get("tensor_count", 0),
+            quantization_type=raw.get("quantization_type", "F16"),
+            sha256_checksum=None,
+            checksum_verified=False,
+            license_str=raw.get("license_str"),
+            untrusted_chat_template=raw.get("untrusted_chat_template"),
+            provenance_notes=list(raw.get("provenance_notes", [])),
         )
 
     @classmethod

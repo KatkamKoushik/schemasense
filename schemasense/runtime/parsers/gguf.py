@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import struct
 from pathlib import Path
 from typing import Any, ClassVar
@@ -13,6 +14,8 @@ from schemasense.runtime.types import (
     ModelHyperparameters,
     ModelManifest,
 )
+
+logger = logging.getLogger("schemasense.runtime.parsers.gguf")
 
 GGUF_MAGIC = 0x46554747  # b"GGUF" in little-endian uint32
 MAX_HEADER_SCAN_BYTES = 16 * 1024 * 1024  # 16 MB maximum header read boundary
@@ -76,6 +79,34 @@ class GGUFParser:
                 f"File too small to be a valid GGUF container: {file_size} bytes"
             )
 
+        from schemasense import is_native_core_available
+
+        if is_native_core_available():
+            try:
+                import schemasense_core
+
+                raw = schemasense_core.parse_gguf_metadata(str(p))
+                return cls._payload_to_manifest(raw, p, file_size)
+            except Exception as e:  # noqa: BLE001
+                err_msg = str(e)
+                if any(
+                    x in err_msg
+                    for x in (
+                        "File too small",
+                        "Invalid GGUF magic",
+                        "Unsupported GGUF version",
+                        "exceeds security boundary",
+                        "exceeds safety limit",
+                        "Unexpected EOF",
+                        "Unknown GGUF value type",
+                    )
+                ):
+                    raise GGUFParseError(err_msg) from e
+                logger.debug(
+                    "Native GGUF parser encountered unexpected error, falling back to Python: %s",
+                    e,
+                )
+
         # Read only up to MAX_HEADER_SCAN_BYTES into an in-memory buffer
         with open(p, "rb") as f:
             header_chunk = f.read(min(file_size, MAX_HEADER_SCAN_BYTES))
@@ -129,6 +160,47 @@ class GGUFParser:
                 f"GGUF v{version} container",
                 f"Raw Architecture: {metadata.get('general.architecture', 'unknown')}",
             ],
+        )
+
+    @classmethod
+    def _payload_to_manifest(
+        cls, raw: dict[str, Any], p: Path, file_size: int
+    ) -> ModelManifest:
+        hp_dict = raw.get("hyperparameters")
+        hyperparams = None
+        if hp_dict:
+            arch_enum = cls._normalize_architecture(hp_dict.get("architecture", ""))
+            hyperparams = ModelHyperparameters(
+                architecture=arch_enum,
+                raw_architecture_name=hp_dict.get("raw_architecture_name", ""),
+                layer_count=hp_dict.get("layer_count"),
+                embedding_length=hp_dict.get("embedding_length"),
+                feed_forward_length=hp_dict.get("feed_forward_length"),
+                head_count=hp_dict.get("head_count"),
+                head_count_kv=hp_dict.get("head_count_kv"),
+                key_length=hp_dict.get("key_length"),
+                value_length=hp_dict.get("value_length"),
+                context_length=hp_dict.get("context_length"),
+                sliding_window=hp_dict.get("sliding_window"),
+                sliding_window_layers=hp_dict.get("sliding_window_layers"),
+                sliding_window_pattern=hp_dict.get("sliding_window_pattern"),
+                expert_count=hp_dict.get("expert_count"),
+                expert_used_count=hp_dict.get("expert_used_count"),
+            )
+
+        return ModelManifest(
+            model_id=raw.get("model_id", p.stem),
+            file_path=p,
+            file_size_bytes=file_size,
+            format=ModelFormat.GGUF,
+            hyperparameters=hyperparams,
+            tensor_count=raw.get("tensor_count", 0),
+            quantization_type=raw.get("quantization_type", "UNKNOWN"),
+            sha256_checksum=None,
+            checksum_verified=False,
+            license_str=raw.get("license_str") or None,
+            untrusted_chat_template=raw.get("untrusted_chat_template") or None,
+            provenance_notes=list(raw.get("provenance_notes", [])),
         )
 
     @classmethod

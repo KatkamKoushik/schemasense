@@ -9,11 +9,11 @@ pandas==2.3.3
 plotly==7.1.0
 sqlalchemy==2.0.57
 sqlglot==30.30.0
-pypdf==7.0.0
+pypdf==7.0.1
 psycopg2-binary==2.9.13
 pymysql==1.2.4
 httpx==0.28.1
-pydantic==2.13.5
+pydantic==2.14.3
 
 # CI & Testing quality gate dependencies
 pytest==9.2.0

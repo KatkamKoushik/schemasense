@@ -19,6 +19,9 @@ import time
 from typing import Any
 
 import pytest
+
+pytest.importorskip("fastapi", reason="FastAPI is an optional platform dependency")
+
 from fastapi.testclient import TestClient
 
 from schemasense.api.app import create_app

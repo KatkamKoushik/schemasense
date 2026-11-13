@@ -46,13 +46,31 @@ else:
         _native_core_error = "schemasense-core package not installed."
 
 
+def is_native_core_available() -> bool:
+    """Returns True if schemasense-core is installed and not dynamically disabled via environment."""
+    if os.getenv("SCHEMASENSE_DISABLE_NATIVE_CORE", "0").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    return HAS_NATIVE_CORE
+
+
 def get_native_core_info() -> dict[str, Any]:
     """Returns diagnostic information regarding the presence and build of the native Rust core."""
-    if not HAS_NATIVE_CORE:
+    if not is_native_core_available():
+        reason = _native_core_error or "schemasense-core package not installed."
+        if os.getenv("SCHEMASENSE_DISABLE_NATIVE_CORE", "0").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            reason = "Native acceleration disabled via SCHEMASENSE_DISABLE_NATIVE_CORE."
         return {
             "accelerated": False,
             "version": None,
-            "reason": _native_core_error or "schemasense-core package not installed.",
+            "reason": reason,
         }
     try:
         import schemasense_core  # type: ignore[import-untyped]
@@ -84,5 +102,6 @@ __all__ = [
     "extract_sql_from_text",
     "get_native_core_info",
     "get_session_agent",
+    "is_native_core_available",
     "verify_schema_fidelity",
 ]

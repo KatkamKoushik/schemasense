@@ -63,9 +63,9 @@ def test_hypothesis_differential_equivalence(
     table: str, col: str, predicate_val: int, dialect: str
 ):
     """Property invariant: Python and Native Rust SQLGuard produce identical validity verdicts."""
-    from schemasense import HAS_NATIVE_CORE
+    from schemasense import is_native_core_available
 
-    if not HAS_NATIVE_CORE:
+    if not is_native_core_available():
         return
 
     query = f"SELECT {col} FROM {table} WHERE id = {predicate_val};"
@@ -91,9 +91,9 @@ def test_hypothesis_differential_adversarial_rejection(
     verb: str, table: str, dialect: str
 ):
     """Property invariant: Both Python and Native engines strictly reject write operations."""
-    from schemasense import HAS_NATIVE_CORE
+    from schemasense import is_native_core_available
 
-    if not HAS_NATIVE_CORE:
+    if not is_native_core_available():
         return
 
     query = f"{verb} TABLE {table};"

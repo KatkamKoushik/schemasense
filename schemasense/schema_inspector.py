@@ -452,9 +452,9 @@ def diff_database_schemas(
     old_schema: DatabaseSchema, new_schema: DatabaseSchema
 ) -> dict[str, Any]:
     """Generates a structured schema diff between two schema snapshots."""
-    from schemasense import HAS_NATIVE_CORE
+    from schemasense import is_native_core_available
 
-    if HAS_NATIVE_CORE:
+    if is_native_core_available():
         try:
             import schemasense_core  # type: ignore[import-untyped]
 
@@ -505,11 +505,11 @@ def diff_database_schemas(
 
 def analyze_table_dependencies(schema: DatabaseSchema) -> dict[str, Any]:
     """Analyzes foreign-key dependency relationships, detects cycles, and generates a valid topological order."""
-    from schemasense import HAS_NATIVE_CORE
+    from schemasense import is_native_core_available
 
     payload = _schema_to_dict_payload(schema)
 
-    if HAS_NATIVE_CORE:
+    if is_native_core_available():
         try:
             import schemasense_core  # type: ignore[import-untyped]
 

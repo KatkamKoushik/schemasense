@@ -330,6 +330,15 @@ def test_native_safetensors_parsing_and_fallback(tmp_path, monkeypatch):
 
 def test_sqlguard_native_validation_direct():
     """Verifies that SQLGuard.validate_native invokes Rust AST security validator directly."""
+    import pytest
+
+    import schemasense
+
+    if not schemasense.is_native_core_available():
+        pytest.skip(
+            "schemasense-core native extension not available in this environment"
+        )
+
     from schemasense.sql_guard import SQLGuard
 
     # 1. Valid SELECT

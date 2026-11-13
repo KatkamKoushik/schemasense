@@ -79,9 +79,9 @@ class GGUFParser:
                 f"File too small to be a valid GGUF container: {file_size} bytes"
             )
 
-        from schemasense import HAS_NATIVE_CORE
+        from schemasense import is_native_core_available
 
-        if HAS_NATIVE_CORE:
+        if is_native_core_available():
             try:
                 import schemasense_core
 

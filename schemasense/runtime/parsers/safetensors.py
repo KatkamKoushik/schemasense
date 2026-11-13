@@ -39,9 +39,9 @@ class SafeTensorsParser:
                 f"File too small for SafeTensors container: {file_size} bytes"
             )
 
-        from schemasense import HAS_NATIVE_CORE
+        from schemasense import is_native_core_available
 
-        if HAS_NATIVE_CORE:
+        if is_native_core_available():
             try:
                 import schemasense_core
 

@@ -2,7 +2,7 @@ name: SchemaSense CI & Engineering Quality Gates
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, "feat/**" ]
   pull_request:
     branches: [ main ]
 
@@ -51,10 +51,35 @@ jobs:
           path: sbom.cyclonedx.json
           retention-days: 14
 
+  rust-core-clippy-and-test:
+    name: Rust Core (fmt, clippy, unit & property tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Check Rust formatting (cargo fmt)
+        run: |
+          cargo fmt --all -- --check
+
+      - name: Lint with Clippy (cargo clippy)
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run native Rust unit tests (cargo test)
+        run: |
+          cargo test --workspace --verbose
+
   lint-and-unit-tests:
     name: Lint & Fast Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -69,10 +94,18 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies (reproducible with constraints)
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+          pip install maturin
+
+      - name: Build & install native Rust extension (schemasense-core)
+        run: |
+          maturin develop --manifest-path crates/schemasense_core/Cargo.toml
 
       - name: Lint with Ruff
         run: |
@@ -101,11 +134,35 @@ jobs:
           path: coverage-unit-${{ matrix.python-version }}.xml
           retention-days: 7
 
+  pure-python-fallback-verification:
+    name: Pure-Python Fallback Verification (No Native Module)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pure-Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+
+      - name: Run tests verifying pure-Python fallback execution
+        run: |
+          pytest -v tests/test_native_foundation.py tests/test_native_acceleration.py tests/test_sql_guard_hypothesis.py
+        env:
+          SCHEMASENSE_DISABLE_NATIVE_CORE: "1"
+
   integration-tests:
     name: Live Integration & Adversarial Verification (Postgres & MySQL)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [lint-and-unit-tests]
+    timeout-minutes: 20
+    needs: [lint-and-unit-tests, rust-core-clippy-and-test]
     services:
       postgres:
         image: postgres:16-alpine
@@ -145,10 +202,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies (reproducible with constraints)
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+          pip install maturin
+
+      - name: Build & install native Rust extension (schemasense-core)
+        run: |
+          maturin develop --manifest-path crates/schemasense_core/Cargo.toml
 
       - name: Run live integration tests & adversarial suite
         run: |

@@ -41,9 +41,9 @@ def detect_column_pii(sample_values: Sequence[Any]) -> tuple[str | None, float]:
     if not clean_samples:
         return None, 0.0
 
-    from schemasense import HAS_NATIVE_CORE
+    from schemasense import is_native_core_available
 
-    if HAS_NATIVE_CORE:
+    if is_native_core_available():
         try:
             import schemasense_core  # type: ignore[import-untyped]
 
@@ -186,10 +186,10 @@ def profile_dataframe(
         ):
             numeric_vals = pd.to_numeric(non_null, errors="coerce").dropna()
             if len(numeric_vals) > 0:
-                from schemasense import HAS_NATIVE_CORE
+                from schemasense import is_native_core_available
 
                 handled_by_native = False
-                if HAS_NATIVE_CORE and len(numeric_vals) >= 20:
+                if is_native_core_available() and len(numeric_vals) >= 20:
                     try:
                         import schemasense_core  # type: ignore[import-untyped]
 

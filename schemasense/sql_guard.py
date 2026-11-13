@@ -175,9 +175,9 @@ class SQLGuard:
         allowed_tables: Sequence[str] | set[str] | None = None,
     ) -> ValidationResult:
         """Directly invokes the native Rust SQLGuard validator."""
-        from schemasense import HAS_NATIVE_CORE
+        from schemasense import is_native_core_available
 
-        if not HAS_NATIVE_CORE:
+        if not is_native_core_available():
             raise RuntimeError("Native SQLGuard is not available in pure-Python mode.")
         import schemasense_core
 
@@ -200,9 +200,9 @@ class SQLGuard:
         allowed_tables: Sequence[str] | set[str] | None,
         py_result: ValidationResult,
     ) -> ValidationResult:
-        from schemasense import HAS_NATIVE_CORE
+        from schemasense import is_native_core_available
 
-        if not HAS_NATIVE_CORE:
+        if not is_native_core_available():
             return py_result
 
         try:

@@ -173,3 +173,4 @@ SchemaSense 2.0 strictly enforces zero raw secret leakage (**Mandatory Correctio
    clear_connection_engines()
    ```
 3. Existing connections in the pool terminate cleanly; new requests establish fresh sessions using rotated credentials.
+

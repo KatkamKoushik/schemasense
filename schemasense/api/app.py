@@ -76,3 +76,12 @@ def create_app(config: PlatformConfig | None = None) -> FastAPI:
     app.include_router(api_v1_router, prefix="/api/v1")
 
     return app
+
+
+# Default application instance for ASGI servers (Uvicorn / Gunicorn)
+app = create_app()
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("schemasense.api.app:app", host="0.0.0.0", port=8000)

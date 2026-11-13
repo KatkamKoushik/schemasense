@@ -12,6 +12,8 @@ sqlglot==30.26.0
 pypdf==6.21.4
 psycopg2-binary==2.9.13
 pymysql==1.2.3
+httpx==0.28.1
+pydantic==2.13.5
 
 # CI & Testing quality gate dependencies
 pytest==9.2.0

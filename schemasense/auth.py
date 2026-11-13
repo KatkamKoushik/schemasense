@@ -12,7 +12,10 @@ import secrets
 from typing import Any, Optional
 from urllib.parse import urlencode
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore[assignment]
 
 logger = logging.getLogger("schemasense.auth")
 
@@ -205,6 +208,11 @@ def exchange_google_code(
     if not cfg:
         raise ValueError("Google OAuth credentials are not configured.")
 
+    if httpx is None:
+        raise RuntimeError(
+            "The 'httpx' package is required for Google OAuth code exchange. Please install httpx."
+        )
+
     token_data = {
         "client_id": cfg["client_id"],
         "client_secret": cfg["client_secret"],
@@ -252,6 +260,11 @@ def exchange_github_code(
     cfg = get_github_config(redirect_uri)
     if not cfg:
         raise ValueError("GitHub OAuth credentials are not configured.")
+
+    if httpx is None:
+        raise RuntimeError(
+            "The 'httpx' package is required for GitHub OAuth code exchange. Please install httpx."
+        )
 
     token_data = {
         "client_id": cfg["client_id"],

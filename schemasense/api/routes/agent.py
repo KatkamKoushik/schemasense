@@ -203,6 +203,25 @@ async def submit_approval_decision(
         },
     )
 
+    if resumed_state.is_terminal:
+        if resumed_state.error:
+            event_store.record_event(
+                run_id=run_id,
+                event_type="run_failed",
+                data={"error": resumed_state.error, "run_id": run_id},
+            )
+        else:
+            event_store.record_event(
+                run_id=run_id,
+                event_type="run_completed",
+                data={
+                    "run_id": run_id,
+                    "confidence_score": resumed_state.confidence_score,
+                    "has_deliverable": resumed_state.final_response is not None,
+                },
+            )
+        event_store.close_stream(run_id)
+
     now = _utc_now_iso()
     return AgentRunDetailResponse(
         run_id=resumed_state.run_id,

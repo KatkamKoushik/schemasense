@@ -30,7 +30,8 @@ class PlatformConfig:
         platform_db_url: str | None = None,
         redis_url: str | None = None,
     ) -> None:
-        raw_mode = (mode or os.getenv("SCHEMASENSE_MODE", "simple")).strip().lower()
+        mode_str = mode or os.getenv("SCHEMASENSE_MODE") or "simple"
+        raw_mode = mode_str.strip().lower()
 
         if raw_mode not in ("simple", "advanced"):
             logger.warning(
@@ -42,13 +43,14 @@ class PlatformConfig:
         self.mode: DeploymentMode = "advanced" if raw_mode == "advanced" else "simple"
 
         # CORS: Strictly configurable trusted origins, disallowing wildcard with credentials
+        raw_env_origins = os.getenv(
+            "SCHEMASENSE_CORS_ORIGINS",
+            "http://localhost:8501,http://127.0.0.1:8501,http://localhost:3000",
+        )
         raw_origins = (
             cors_allowed_origins
             if cors_allowed_origins is not None
-            else os.getenv(
-                "SCHEMASENSE_CORS_ORIGINS",
-                "http://localhost:8501,http://127.0.0.1:8501,http://localhost:3000",
-            ).split(",")
+            else raw_env_origins.split(",")
         )
         cleaned_origins = [origin.strip() for origin in raw_origins if origin.strip()]
         # Never allow wildcard when authenticated requests are served
@@ -60,9 +62,12 @@ class PlatformConfig:
             ]
 
         # JWT / OIDC Configuration
-        self.jwt_secret_key: str = jwt_secret_key or os.getenv(
-            "SCHEMASENSE_JWT_SECRET", "schemasense-insecure-dev-secret-change-in-prod"
+        resolved_secret = (
+            jwt_secret_key
+            or os.getenv("SCHEMASENSE_JWT_SECRET")
+            or "schemasense-insecure-dev-secret-change-in-prod"
         )
+        self.jwt_secret_key: str = resolved_secret
         self.jwt_algorithm: str = jwt_algorithm
 
         # Advanced Mode Infrastructure (None in Simple Mode)

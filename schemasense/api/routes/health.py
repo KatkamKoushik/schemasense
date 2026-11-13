@@ -56,9 +56,9 @@ async def readiness_probe() -> ReadinessResponse:
 
     # 1. Evaluate Native Rust Core Status
     try:
-        from schemasense.schema_inspector import NATIVE_CORE_AVAILABLE
+        from schemasense import is_native_core_available
 
-        if NATIVE_CORE_AVAILABLE:
+        if is_native_core_available():
             components["native_core"] = ComponentHealth(
                 name="native_core",
                 status="available",

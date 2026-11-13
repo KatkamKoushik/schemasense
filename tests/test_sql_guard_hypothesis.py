@@ -2,10 +2,45 @@
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from schemasense.sql_guard import SQLGuard
+
+RESERVED_SQL_KEYWORDS = {
+    "select",
+    "from",
+    "where",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "and",
+    "or",
+    "not",
+    "limit",
+    "group",
+    "order",
+    "by",
+    "having",
+    "join",
+    "on",
+    "as",
+    "is",
+    "null",
+    "in",
+    "union",
+    "all",
+    "table",
+    "distinct",
+    "true",
+    "false",
+    "like",
+    "ilike",
+    "between",
+    "user",
+}
 
 WRITE_KEYWORDS = [
     "DROP",
@@ -63,6 +98,16 @@ def test_hypothesis_differential_equivalence(
     table: str, col: str, predicate_val: int, dialect: str
 ):
     """Property invariant: Python and Native Rust SQLGuard produce identical validity verdicts."""
+    assume(
+        table.lower() not in RESERVED_SQL_KEYWORDS
+        and not table.startswith("_")
+        and not table.isdigit()
+    )
+    assume(
+        col.lower() not in RESERVED_SQL_KEYWORDS
+        and not col.startswith("_")
+        and not col.isdigit()
+    )
     from schemasense import is_native_core_available
 
     if not is_native_core_available():

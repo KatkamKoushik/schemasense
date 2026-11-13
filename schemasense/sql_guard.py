@@ -158,14 +158,26 @@ class SQLGuard:
         py_result = cls._validate_python(
             query, dialect=dialect, allowed_tables=allowed_tables
         )
-        if cls.SHADOW_VALIDATION:
-            return cls._run_shadow_validation(
+        final_result = (
+            cls._run_shadow_validation(
                 query,
                 dialect=dialect,
                 allowed_tables=allowed_tables,
                 py_result=py_result,
             )
-        return py_result
+            if cls.SHADOW_VALIDATION
+            else py_result
+        )
+        try:
+            from schemasense.observability.metrics import record_sqlguard_validation
+
+            record_sqlguard_validation(
+                decision="allowed" if final_result.is_valid else "rejected",
+                dialect=cls.normalize_dialect(dialect),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return final_result
 
     @classmethod
     def validate_native(

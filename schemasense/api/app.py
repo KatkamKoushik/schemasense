@@ -14,8 +14,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from schemasense.api.middleware.observability import ObservabilityMiddleware
+from schemasense.api.middleware.rate_limit import RateLimitMiddleware
 from schemasense.api.routes import router as api_v1_router
 from schemasense.api.routes.health import router as health_router
+from schemasense.api.routes.metrics import router as metrics_router
 from schemasense.config import PlatformConfig, get_platform_config, set_platform_config
 
 logger = logging.getLogger("schemasense.api")
@@ -71,8 +74,15 @@ def create_app(config: PlatformConfig | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 3. Mount Health Probes at Root and /api/v1
+    # 3. Observability & Distributed Tracing Middleware
+    app.add_middleware(ObservabilityMiddleware)
+
+    # 4. Sliding-Window Rate Limiting Middleware
+    app.add_middleware(RateLimitMiddleware)
+
+    # 5. Mount Probes and Metrics at Root and /api/v1
     app.include_router(health_router)
+    app.include_router(metrics_router)
     app.include_router(api_v1_router, prefix="/api/v1")
 
     return app

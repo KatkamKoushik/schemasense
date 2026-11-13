@@ -59,6 +59,7 @@ VERIFY ──> DELIVER ──> AUDIT_AND_LEARN <──────────�
 ## Highlights
 
 - **Universal Multi-Cloud & Local AI Architecture**: Connect any model, any provider, and any custom gateway. Natively supports **Google Gemini**, **OpenAI** (GPT-4o, o1, o3-mini), **Microsoft Azure OpenAI Service**, **AWS Bedrock**, **Cloudflare Workers AI**, **Anthropic Claude**, **DeepSeek**, **Groq**, **OpenRouter**, **Mistral AI**, **Ollama**, **Custom OpenAI-compatible gateways**, and **llama.cpp** (local in-process GGUF).
+- **Production Observability & Gateway Security**: Standard Prometheus `/metrics` exposition, OpenTelemetry-compatible distributed tracing with correlation headers (`X-Trace-ID`, `X-Response-Time-Seconds`), sliding-window rate limiting with `HTTP 429` and `Retry-After`, and strict privacy-preserving telemetry forbidding raw SQL and secrets in metrics (**Mandatory Correction 18**).
 - **FastAPI Application Gateway & Sequenced SSE Streaming**: W3C compliant Server-Sent Events with monotonically increasing sequential IDs (`id: <int>`), ring buffer retention, and reconnection replay via standard `Last-Event-ID`.
 - **Distributed Asynchronous Workloads**: Celery background tasks with at-least-once leasing (`task_acks_late=True`, `task_reject_on_worker_lost=True`), bounded exponential backoff retries, and strict fail-fast error handling during queue outages.
 - **Versioned Platform Database Migrations**: Explicit Alembic migration management (`python -m schemasense.db.migrate upgrade head`, `check`, `downgrade -1`) ensuring zero unvetted migrations during web gateway boot.
@@ -99,6 +100,9 @@ docker compose up -d
 # Open Streamlit Console: http://localhost:8501
 # Open FastAPI OpenAPI Documentation: http://localhost:8000/docs
 # Check Gateway Readiness Probe: curl http://localhost:8000/health/ready
+# Check Prometheus Platform Metrics: curl http://localhost:8000/metrics
+# Open Prometheus Metrics Explorer: http://localhost:9090
+# Open Grafana Dashboards: http://localhost:3000 (admin / schemasense)
 ```
 
 ### Option B: Simple Mode (Standalone Python + Streamlit — Zero External Daemons)

@@ -14,6 +14,11 @@ from schemasense.agent import (
 )
 from schemasense.agent.tools import ExecutionContext
 from schemasense.api.events import get_event_store
+from schemasense.observability.metrics import (
+    record_agent_run,
+    record_queue_task,
+    record_tool_invocation,
+)
 from schemasense.tasks.celery_app import get_celery_app
 
 logger = logging.getLogger("schemasense.tasks.tasks")
@@ -109,6 +114,7 @@ def run_agent_lifecycle_core(
         final_state.requires_approval
         and final_state.approval_status == ApprovalStatus.PENDING
     ):
+        record_agent_run(tenant_id=tenant_id, status="pending_approval")
         event_store.record_event(
             run_id=run_id,
             event_type="approval_required",
@@ -124,12 +130,14 @@ def run_agent_lifecycle_core(
 
     # 6. Terminal Closure
     if final_state.error:
+        record_agent_run(tenant_id=tenant_id, status="failed")
         event_store.record_event(
             run_id=run_id,
             event_type="run_failed",
             data={"error": final_state.error, "run_id": run_id},
         )
     else:
+        record_agent_run(tenant_id=tenant_id, status="completed")
         event_store.record_event(
             run_id=run_id,
             event_type="run_completed",
@@ -169,6 +177,9 @@ def run_profiling_core(
     result = tool.execute(
         parameters={"table_names": table_names},
         context=ctx,
+    )
+    record_tool_invocation(
+        tool_name="inspect_schema", status="success" if result.success else "error"
     )
 
     summary = {
@@ -211,7 +222,8 @@ if celery_app is not None:
     ) -> dict[str, Any]:
         """Celery worker task with bounded retries and exponential backoff."""
         try:
-            return run_agent_lifecycle_core(
+            record_queue_task(task_name="execute_agent_run", status="running")
+            res = run_agent_lifecycle_core(
                 run_id=run_id,
                 tenant_id=tenant_id,
                 user_id=user_id,
@@ -221,7 +233,10 @@ if celery_app is not None:
                 context=context,
                 idempotency_key=idempotency_key,
             )
+            record_queue_task(task_name="execute_agent_run", status="success")
+            return res
         except Exception as exc:  # noqa: BLE001
+            record_queue_task(task_name="execute_agent_run", status="failure")
             logger.exception("Error executing agent run task %s: %s", run_id, exc)
             if self.request.retries < self.max_retries:
                 countdown = 2**self.request.retries
@@ -243,14 +258,18 @@ if celery_app is not None:
     ) -> dict[str, Any]:
         """Celery worker task for async schema profiling."""
         try:
-            return run_profiling_core(
+            record_queue_task(task_name="execute_profiling", status="running")
+            res = run_profiling_core(
                 connection_id=connection_id,
                 tenant_id=tenant_id,
                 user_id=user_id,
                 table_names=table_names,
                 idempotency_key=idempotency_key,
             )
+            record_queue_task(task_name="execute_profiling", status="success")
+            return res
         except Exception as exc:  # noqa: BLE001
+            record_queue_task(task_name="execute_profiling", status="failure")
             logger.exception(
                 "Error executing profiling task for %s: %s", connection_id, exc
             )

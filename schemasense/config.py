@@ -29,6 +29,10 @@ class PlatformConfig:
         jwt_algorithm: str = "HS256",
         platform_db_url: str | None = None,
         redis_url: str | None = None,
+        rate_limit_enabled: bool | None = None,
+        rate_limit_per_minute: int | None = None,
+        telemetry_enabled: bool | None = None,
+        otel_exporter_endpoint: str | None = None,
     ) -> None:
         mode_str = mode or os.getenv("SCHEMASENSE_MODE") or "simple"
         raw_mode = mode_str.strip().lower()
@@ -80,6 +84,29 @@ class PlatformConfig:
         )
         self.celery_result_backend: str | None = (
             os.getenv("CELERY_RESULT_BACKEND") or self.redis_url
+        )
+
+        # Observability & Rate Limiting
+        raw_rl_enabled = (
+            rate_limit_enabled
+            if rate_limit_enabled is not None
+            else os.getenv("SCHEMASENSE_RATE_LIMIT_ENABLED", "true").lower() == "true"
+        )
+        self.rate_limit_enabled: bool = raw_rl_enabled
+
+        raw_rl_limit = rate_limit_per_minute or int(
+            os.getenv("SCHEMASENSE_RATE_LIMIT_PER_MINUTE", "120")
+        )
+        self.rate_limit_per_minute: int = max(1, raw_rl_limit)
+
+        raw_tel_enabled = (
+            telemetry_enabled
+            if telemetry_enabled is not None
+            else os.getenv("SCHEMASENSE_TELEMETRY_ENABLED", "true").lower() == "true"
+        )
+        self.telemetry_enabled: bool = raw_tel_enabled
+        self.otel_exporter_endpoint: str | None = otel_exporter_endpoint or os.getenv(
+            "OTEL_EXPORTER_OTLP_ENDPOINT"
         )
 
     @property

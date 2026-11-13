@@ -143,6 +143,46 @@ services:
       retries: 3
       start_period: 15s
 
+  # ----------------------------------------------------------------------------
+  # 7. Prometheus Metrics Scraper
+  # ----------------------------------------------------------------------------
+  schemasense-prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: schemasense-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - schemasense_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    depends_on:
+      schemasense-api:
+        condition: service_healthy
+
+  # ----------------------------------------------------------------------------
+  # 8. Grafana Metrics Dashboard
+  # ----------------------------------------------------------------------------
+  schemasense-grafana:
+    image: grafana/grafana:11.1.0
+    container_name: schemasense-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=schemasense
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - schemasense_grafana_data:/var/lib/grafana
+    depends_on:
+      - schemasense-prometheus
+
 volumes:
   schemasense_platform_data:
   schemasense_redis_data:
+  schemasense_prometheus_data:
+  schemasense_grafana_data:

@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from schemasense.api.routes.agent import router as agent_router
 from schemasense.api.routes.health import router as health_router
+from schemasense.api.routes.metrics import router as metrics_router
 
 router = APIRouter()
 
@@ -14,3 +15,6 @@ router.include_router(health_router)
 
 # Mount agent orchestration routes
 router.include_router(agent_router)
+
+# Mount observability & metrics
+router.include_router(metrics_router)

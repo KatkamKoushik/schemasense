@@ -45,6 +45,9 @@ class Metric:
         self.doc = doc
         self.metric_type = metric_type
 
+    def collect(self) -> list[str]:
+        return []
+
 
 class Counter(Metric):
     def __init__(self, name: str, doc: str):

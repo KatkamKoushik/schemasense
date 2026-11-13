@@ -10,3 +10,4 @@ scrape_configs:
         labels:
           service: "schemasense-gateway"
           env: "production"
+

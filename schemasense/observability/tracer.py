@@ -118,10 +118,10 @@ class SpanContextManager:
                     k: (redact_sensitive_string(v) if isinstance(v, str) else v)
                     for k, v in self.raw_attributes.items()
                 }
-                self._otel_cm = tracer.start_as_current_span(
-                    self.name, attributes=clean_attrs
-                )
-                self._otel_cm.__enter__()
+                cm = tracer.start_as_current_span(self.name, attributes=clean_attrs)
+                if hasattr(cm, "__enter__"):
+                    self._otel_cm = cm
+                    cm.__enter__()
             except Exception:  # noqa: BLE001
                 self._otel_cm = None
 

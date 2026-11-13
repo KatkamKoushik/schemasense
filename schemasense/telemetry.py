@@ -159,5 +159,30 @@ class TelemetryCollector:
         return list(self._buffer[-limit:])
 
 
+def log_sqlguard_divergence(
+    query: str,
+    dialect: str,
+    python_valid: bool,
+    python_error: str | None,
+    native_valid: bool,
+    native_error: str | None,
+    python_tables: list[str],
+    native_tables: list[str],
+) -> None:
+    """Logs privacy-safe telemetry event when Python and Native SQLGuard diverge."""
+    fingerprint = compute_query_fingerprint(query)
+    logger.warning(
+        "SQLGuard Divergence [fingerprint=%s, dialect=%s]: Python(valid=%s, tables=%s) vs Native(valid=%s, tables=%s). Errors: py='%s', native='%s'",
+        fingerprint[:12],
+        dialect,
+        python_valid,
+        python_tables,
+        native_valid,
+        native_tables,
+        python_error,
+        native_error,
+    )
+
+
 # Global process singleton
 telemetry = TelemetryCollector()

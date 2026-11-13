@@ -1,0 +1,30 @@
+[package]
+name = "schemasense_core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Katkam Koushik <koushikkatkam@gmail.com>"]
+license = "MIT"
+description = "High-performance native acceleration core for SchemaSense AI"
+readme = "README.md"
+
+[lib]
+name = "schemasense_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["abi3-py310", "extension-module"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.10"
+petgraph = "0.6"
+rayon = "1.10"
+sqlparser = { version = "0.64.0", default-features = false, features = ["std", "visitor"] }
+
+
+[dev-dependencies]
+pyo3 = { version = "0.22", features = ["auto-initialize"] }
+
+[lints]
+workspace = true
+
+

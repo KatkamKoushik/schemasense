@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 import pandas as pd
 import sqlglot
@@ -137,6 +139,9 @@ DIALECT_MAPPING = {
 class SQLGuard:
     """Security validator enforcing AST single-statement read-only rules."""
 
+    SHADOW_VALIDATION: ClassVar[bool] = True
+    ENFORCE_DOUBLE_LOCK: ClassVar[bool] = False
+
     @classmethod
     def normalize_dialect(cls, dialect: str) -> str:
         clean = (dialect or "").strip().lower()
@@ -144,6 +149,105 @@ class SQLGuard:
 
     @classmethod
     def validate(
+        cls,
+        query: str,
+        dialect: str = "postgres",
+        allowed_tables: Sequence[str] | set[str] | None = None,
+    ) -> ValidationResult:
+        """Parses and validates that query is a single read-only SELECT against allowed tables."""
+        py_result = cls._validate_python(
+            query, dialect=dialect, allowed_tables=allowed_tables
+        )
+        if cls.SHADOW_VALIDATION:
+            return cls._run_shadow_validation(
+                query,
+                dialect=dialect,
+                allowed_tables=allowed_tables,
+                py_result=py_result,
+            )
+        return py_result
+
+    @classmethod
+    def validate_native(
+        cls,
+        query: str,
+        dialect: str = "postgres",
+        allowed_tables: Sequence[str] | set[str] | None = None,
+    ) -> ValidationResult:
+        """Directly invokes the native Rust SQLGuard validator."""
+        from schemasense import HAS_NATIVE_CORE
+
+        if not HAS_NATIVE_CORE:
+            raise RuntimeError("Native SQLGuard is not available in pure-Python mode.")
+        import schemasense_core
+
+        clean_sql = (query or "").strip()
+        read_dialect = cls.normalize_dialect(dialect)
+        allowed_list = list(allowed_tables) if allowed_tables is not None else None
+        res = schemasense_core.validate_sql(clean_sql, read_dialect, allowed_list)
+        return ValidationResult(
+            is_valid=res["is_valid"],
+            error_message=res["error_message"],
+            extracted_tables=res["extracted_tables"],
+            normalized_sql=res["normalized_sql"],
+        )
+
+    @classmethod
+    def _run_shadow_validation(
+        cls,
+        query: str,
+        dialect: str,
+        allowed_tables: Sequence[str] | set[str] | None,
+        py_result: ValidationResult,
+    ) -> ValidationResult:
+        from schemasense import HAS_NATIVE_CORE
+
+        if not HAS_NATIVE_CORE:
+            return py_result
+
+        try:
+            import schemasense_core
+
+            clean_sql = (query or "").strip()
+            read_dialect = cls.normalize_dialect(dialect)
+            allowed_list = list(allowed_tables) if allowed_tables is not None else None
+            native_res = schemasense_core.validate_sql(
+                clean_sql, read_dialect, allowed_list
+            )
+
+            # Divergence Telemetry (Stage B)
+            if native_res["is_valid"] != py_result.is_valid:
+                from schemasense.telemetry import log_sqlguard_divergence
+
+                log_sqlguard_divergence(
+                    query=clean_sql,
+                    dialect=read_dialect,
+                    python_valid=py_result.is_valid,
+                    python_error=py_result.error_message,
+                    native_valid=native_res["is_valid"],
+                    native_error=native_res["error_message"],
+                    python_tables=py_result.extracted_tables,
+                    native_tables=native_res["extracted_tables"],
+                )
+
+            # Strict Conjunction (Stage C Double-Lock)
+            double_lock = (
+                cls.ENFORCE_DOUBLE_LOCK
+                or os.environ.get("SCHEMASENSE_SQLGUARD_DOUBLE_LOCK") == "1"
+            )
+            if double_lock and py_result.is_valid and not native_res["is_valid"]:
+                return ValidationResult(
+                    is_valid=False,
+                    error_message=f"Strict Conjunction Failure: Native SQLGuard rejected query: {native_res['error_message']}",
+                    extracted_tables=py_result.extracted_tables,
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Native SQLGuard shadow execution error: %s", e)
+
+        return py_result
+
+    @classmethod
+    def _validate_python(
         cls,
         query: str,
         dialect: str = "postgres",

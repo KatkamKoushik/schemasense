@@ -423,10 +423,51 @@ def inspect_database_schema(
     )
 
 
+def _schema_to_dict_payload(schema: DatabaseSchema) -> dict[str, Any]:
+    """Helper converting DatabaseSchema to serializable dictionary for native engine."""
+    return {
+        "database_name": schema.database_name,
+        "dialect": schema.dialect,
+        "tables": {
+            name: {
+                "name": t.name,
+                "columns": [
+                    {"name": c.name, "data_type": c.data_type} for c in t.columns
+                ],
+                "foreign_keys": [
+                    {
+                        "constrained_columns": list(fk.constrained_columns),
+                        "referred_table": fk.referred_table,
+                        "referred_columns": list(fk.referred_columns),
+                    }
+                    for fk in t.foreign_keys
+                ],
+            }
+            for name, t in schema.tables.items()
+        },
+    }
+
+
 def diff_database_schemas(
     old_schema: DatabaseSchema, new_schema: DatabaseSchema
 ) -> dict[str, Any]:
     """Generates a structured schema diff between two schema snapshots."""
+    from schemasense import HAS_NATIVE_CORE
+
+    if HAS_NATIVE_CORE:
+        try:
+            import schemasense_core  # type: ignore[import-untyped]
+
+            old_payload = _schema_to_dict_payload(old_schema)
+            new_payload = _schema_to_dict_payload(new_schema)
+            return schemasense_core.diff_schemas(
+                json.dumps(old_payload), json.dumps(new_payload)
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                f"Native schema diff failed, falling back to pure-Python: {exc}"
+            )
+
     old_tables = set(old_schema.tables.keys())
     new_tables = set(new_schema.tables.keys())
 
@@ -459,4 +500,68 @@ def diff_database_schemas(
         "added_tables": added_tables,
         "removed_tables": removed_tables,
         "modified_tables": modified_tables,
+    }
+
+
+def analyze_table_dependencies(schema: DatabaseSchema) -> dict[str, Any]:
+    """Analyzes foreign-key dependency relationships, detects cycles, and generates a valid topological order."""
+    from schemasense import HAS_NATIVE_CORE
+
+    payload = _schema_to_dict_payload(schema)
+
+    if HAS_NATIVE_CORE:
+        try:
+            import schemasense_core  # type: ignore[import-untyped]
+
+            return schemasense_core.analyze_fk_dependencies(
+                json.dumps(payload["tables"])
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                f"Native graph dependency analysis failed, falling back to Python: {exc}"
+            )
+
+    # Pure-Python fallback for dependency DAG analysis
+    tables = schema.tables
+    deps: dict[str, set[str]] = {t_name: set() for t_name in tables}
+    rev_deps: dict[str, set[str]] = {t_name: set() for t_name in tables}
+
+    for t_name, t in tables.items():
+        for fk in t.foreign_keys:
+            if fk.referred_table in tables and fk.referred_table != t_name:
+                deps[t_name].add(fk.referred_table)
+                rev_deps[fk.referred_table].add(t_name)
+
+    # Root tables: no FK dependencies (in-degree 0)
+    root_tables = sorted([t for t, d in deps.items() if len(d) == 0])
+    # Leaf tables: not referenced by other tables (out-degree 0)
+    leaf_tables = sorted([t for t, rd in rev_deps.items() if len(rd) == 0])
+
+    # Simple topological sort (Kahn's algorithm)
+    in_degree = {t: len(d) for t, d in deps.items()}
+    queue = [t for t in sorted(tables.keys()) if in_degree[t] == 0]
+    topological_order = []
+
+    while queue:
+        curr = queue.pop(0)
+        topological_order.append(curr)
+        for dependent in sorted(rev_deps[curr]):
+            in_degree[dependent] -= 1
+            if in_degree[dependent] == 0:
+                queue.append(dependent)
+
+    is_acyclic = len(topological_order) == len(tables)
+    cycles: list[list[str]] = []
+    if not is_acyclic:
+        cyclic_nodes = sorted([t for t, deg in in_degree.items() if deg > 0])
+        if cyclic_nodes:
+            cycles.append(cyclic_nodes)
+        topological_order = []
+
+    return {
+        "is_acyclic": is_acyclic,
+        "topological_order": topological_order,
+        "root_tables": root_tables,
+        "leaf_tables": leaf_tables,
+        "cycles": cycles,
     }

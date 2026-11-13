@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/schemasense_core",
+]
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("gil-refs"))'] }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+useless_conversion = "allow"
+
+
+

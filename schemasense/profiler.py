@@ -41,6 +41,16 @@ def detect_column_pii(sample_values: Sequence[Any]) -> tuple[str | None, float]:
     if not clean_samples:
         return None, 0.0
 
+    from schemasense import HAS_NATIVE_CORE
+
+    if HAS_NATIVE_CORE:
+        try:
+            import schemasense_core  # type: ignore[import-untyped]
+
+            return schemasense_core.detect_column_pii(clean_samples)
+        except Exception:  # noqa: BLE001
+            pass
+
     total = len(clean_samples)
     for pii_type, regex in PII_PATTERNS.items():
         matches = sum(1 for v in clean_samples if regex.match(v))
@@ -176,28 +186,52 @@ def profile_dataframe(
         ):
             numeric_vals = pd.to_numeric(non_null, errors="coerce").dropna()
             if len(numeric_vals) > 0:
-                min_v = round(float(numeric_vals.min()), 3)
-                max_v = round(float(numeric_vals.max()), 3)
-                mean_v = round(float(numeric_vals.mean()), 3)
-                median_v = round(float(numeric_vals.median()), 3)
-                std_v = (
-                    round(float(numeric_vals.std()), 3)
-                    if len(numeric_vals) > 1
-                    else 0.0
-                )
+                from schemasense import HAS_NATIVE_CORE
 
-                # IQR Outlier Detection
-                q25 = float(numeric_vals.quantile(0.25))
-                q75 = float(numeric_vals.quantile(0.75))
-                iqr = q75 - q25
-                if iqr > 0:
-                    lower_bound = q25 - (1.5 * iqr)
-                    upper_bound = q75 + (1.5 * iqr)
-                    outliers = numeric_vals[
-                        (numeric_vals < lower_bound) | (numeric_vals > upper_bound)
-                    ]
-                    outlier_cnt = len(outliers)
-                    outlier_ratios.append(outlier_cnt / len(numeric_vals))
+                handled_by_native = False
+                if HAS_NATIVE_CORE and len(numeric_vals) >= 20:
+                    try:
+                        import schemasense_core  # type: ignore[import-untyped]
+
+                        native_stats = schemasense_core.compute_numeric_column_stats(
+                            numeric_vals.to_list()
+                        )
+
+                        min_v = native_stats.get("min_value")
+                        max_v = native_stats.get("max_value")
+                        mean_v = native_stats.get("mean_value")
+                        median_v = native_stats.get("median_value")
+                        std_v = native_stats.get("std_value")
+                        outlier_cnt = int(native_stats.get("outlier_count", 0))
+                        if len(numeric_vals) > 0:
+                            outlier_ratios.append(outlier_cnt / len(numeric_vals))
+                        handled_by_native = True
+                    except Exception:  # noqa: BLE001
+                        handled_by_native = False
+
+                if not handled_by_native:
+                    min_v = round(float(numeric_vals.min()), 3)
+                    max_v = round(float(numeric_vals.max()), 3)
+                    mean_v = round(float(numeric_vals.mean()), 3)
+                    median_v = round(float(numeric_vals.median()), 3)
+                    std_v = (
+                        round(float(numeric_vals.std()), 3)
+                        if len(numeric_vals) > 1
+                        else 0.0
+                    )
+
+                    # IQR Outlier Detection
+                    q25 = float(numeric_vals.quantile(0.25))
+                    q75 = float(numeric_vals.quantile(0.75))
+                    iqr = q75 - q25
+                    if iqr > 0:
+                        lower_bound = q25 - (1.5 * iqr)
+                        upper_bound = q75 + (1.5 * iqr)
+                        outliers = numeric_vals[
+                            (numeric_vals < lower_bound) | (numeric_vals > upper_bound)
+                        ]
+                        outlier_cnt = len(outliers)
+                        outlier_ratios.append(outlier_cnt / len(numeric_vals))
 
         # PII Detection
         pii_type, pii_ratio = detect_column_pii(non_null.tolist())

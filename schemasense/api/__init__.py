@@ -3,5 +3,6 @@
 from __future__ import annotations
 
 from schemasense.api.app import create_app
+from schemasense.api.events import EventStore, SSEEvent, get_event_store
 
-__all__ = ["create_app"]
+__all__ = ["EventStore", "SSEEvent", "create_app", "get_event_store"]

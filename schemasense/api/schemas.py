@@ -106,17 +106,74 @@ class AgentRunSummaryResponse(BaseModel):
     current_state: str
     created_at: str
     updated_at: str
+    event_stream_url: str | None = None
 
 
 class HumanApprovalActionRequest(BaseModel):
     """Transition command for gated agent actions awaiting human decision."""
 
-    action: Literal["approve", "reject", "cancel"]
+    action: Literal["approve", "reject", "cancel", "expire"]
     comment: str | None = Field(
         default=None,
         max_length=1000,
         description="Optional human reviewer rationale.",
     )
+
+
+class AgentRunDetailResponse(BaseModel):
+    """Detailed snapshot of an agent run including state transitions and deliverables."""
+
+    run_id: str
+    tenant_id: str
+    user_id: str
+    connection_id: str
+    goal: str
+    current_state: str
+    state_history: list[str] = Field(default_factory=list)
+    requires_approval: bool = False
+    approval_status: str = "none"
+    approval_gate_reason: str | None = None
+    approval_decision_by: str | None = None
+    confidence_score: float = 1.0
+    generated_sql: str | None = None
+    tool_results: list[dict[str, Any]] = Field(default_factory=list)
+    final_response: dict[str, Any] | None = None
+    error: str | None = None
+    is_terminal: bool = False
+    event_stream_url: str = ""
+    created_at: str
+    updated_at: str
+
+
+class AsyncProfilingRequest(BaseModel):
+    """Request to initiate asynchronous schema profiling and quality analysis."""
+
+    connection_id: str
+    table_names: list[str] | None = None
+    idempotency_key: str | None = None
+
+    @field_validator("connection_id")
+    @classmethod
+    def forbid_raw_uris(cls, v: str) -> str:
+        clean = v.strip()
+        if not clean:
+            raise ValueError("connection_id must not be empty.")
+        if "://" in clean or "@" in clean:
+            raise ValueError(
+                "Raw database connection URIs are forbidden. Use a registered connection_id."
+            )
+        return clean
+
+
+class ProfilingTaskResponse(BaseModel):
+    """Response returned upon queueing or executing an async profiling task."""
+
+    task_id: str
+    connection_id: str
+    tenant_id: str
+    status: Literal["queued", "completed", "failed"]
+    table_count: int = 0
+    message: str = "Profiling job accepted"
 
 
 class ErrorResponse(BaseModel):

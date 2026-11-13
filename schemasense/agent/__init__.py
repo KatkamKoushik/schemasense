@@ -15,6 +15,7 @@ from schemasense.agent.lifecycle import (
 )
 from schemasense.agent.runner import (
     get_agent_run_state,
+    reset_agent_runner,
     resume_agent_run,
     start_agent_run,
 )
@@ -76,6 +77,7 @@ __all__ = [
     "get_connection_engine",
     "is_agent_lifecycle_available",
     "register_connection_engine",
+    "reset_agent_runner",
     "resume_agent_run",
     "start_agent_run",
     "unregister_connection_engine",

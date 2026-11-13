@@ -22,6 +22,13 @@ _GLOBAL_CHECKPOINTER: BaseCheckpointSaver = get_checkpointer("memory")
 _GLOBAL_GRAPH: CompiledStateGraph = create_agent_graph(_GLOBAL_CHECKPOINTER)
 
 
+def reset_agent_runner() -> None:
+    """Resets global in-memory checkpointer and agent graph (useful for test isolation)."""
+    global _GLOBAL_CHECKPOINTER, _GLOBAL_GRAPH
+    _GLOBAL_CHECKPOINTER = get_checkpointer("memory")
+    _GLOBAL_GRAPH = create_agent_graph(_GLOBAL_CHECKPOINTER)
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 

@@ -75,6 +75,12 @@ class PlatformConfig:
             "SCHEMASENSE_PLATFORM_DB_URL"
         )
         self.redis_url: str | None = redis_url or os.getenv("REDIS_URL")
+        self.celery_broker_url: str | None = (
+            os.getenv("CELERY_BROKER_URL") or self.redis_url
+        )
+        self.celery_result_backend: str | None = (
+            os.getenv("CELERY_RESULT_BACKEND") or self.redis_url
+        )
 
     @property
     def is_advanced_mode(self) -> bool:
@@ -109,6 +115,11 @@ def set_platform_config(config: PlatformConfig | None) -> None:
 # ─────────────────────────────────────────────────────────────
 
 _CONNECTION_REGISTRY: dict[str, dict[str, str]] = {}
+
+
+def clear_connection_references() -> None:
+    """Clears all registered connection references (used for test isolation)."""
+    _CONNECTION_REGISTRY.clear()
 
 
 def register_connection_reference(

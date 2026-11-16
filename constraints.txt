@@ -8,23 +8,23 @@ google-genai==2.33.0
 pandas==2.3.3
 plotly==7.1.0
 sqlalchemy==2.0.57
-sqlglot==30.30.0
-pypdf==7.0.0
+sqlglot==30.31.0
+pypdf==7.0.1
 psycopg2-binary==2.9.13
 pymysql==1.2.4
 httpx==0.28.1
-pydantic==2.13.5
+pydantic==2.14.3
 
 # CI & Testing quality gate dependencies
 pytest==9.2.0
 pytest-cov==7.1.0
-ruff==0.17.4
+ruff==0.17.5
 pip-audit==2.10.1
 cyclonedx-bom==8.0.1
 detect-secrets==1.5.0
-fastapi==0.115.11
-alembic==1.20.0
+fastapi==0.162.5
+alembic==1.20.1
 langgraph==1.2.21
 langchain-core==1.7.7
-celery==5.6.3
+celery==5.7.0
 redis==8.1.0

@@ -23,13 +23,12 @@ jobs:
       - name: Install project and build native validator
         run: |
           python -m pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
-          python -m pip install -e . --no-deps
           python -m pip install 'maturin>=1.5,<2'
           maturin build --release --locked --manifest-path crates/schemasense_core/Cargo.toml --out "$RUNNER_TEMP/wheels"
           python -m pip install "$RUNNER_TEMP"/wheels/*.whl --no-deps
       - name: Replay actual validators without SQL execution
         run: |
-          python research/ss001_validator_replay.py "$RUNNER_TEMP/ss001"
+          PYTHONPATH="$GITHUB_WORKSPACE" python research/ss001_validator_replay.py "$RUNNER_TEMP/ss001"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

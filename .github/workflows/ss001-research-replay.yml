@@ -1,0 +1,37 @@
+name: SS-001 validator development replay
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'research/ss001_validator_replay.py'
+      - '.github/workflows/ss001-research-replay.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install project and build native validator
+        run: |
+          python -m pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+          python -m pip install 'maturin>=1.5,<2'
+          maturin build --release --locked --manifest-path crates/schemasense_core/Cargo.toml --out "$RUNNER_TEMP/wheels"
+          python -m pip install "$RUNNER_TEMP"/wheels/*.whl --no-deps
+      - name: Replay actual validators without SQL execution
+        run: |
+          PYTHONPATH="$GITHUB_WORKSPACE" python research/ss001_validator_replay.py "$RUNNER_TEMP/ss001"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ss001-development-replay
+          path: ${{ runner.temp }}/ss001/
+          if-no-files-found: warn
